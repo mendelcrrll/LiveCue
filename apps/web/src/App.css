@@ -2,17 +2,18 @@
   font-size: 16px;
   padding: 5px 10px;
   border-radius: 5px;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 2px solid transparent;
+  color: var(--interactive-text);
+  background: var(--interactive-bg);
+  border: 2px solid var(--interactive-border);
   transition: border-color 0.3s;
   margin-bottom: 24px;
 
   &:hover {
-    border-color: var(--accent-border);
+    border-color: var(--interactive-border);
+    background: var(--interactive-bg-hover);
   }
   &:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
   }
 }
@@ -60,7 +61,7 @@
   display: flex;
   flex-direction: column;
   gap: 25px;
-  place-content: center;
+  place-content: center start;
   place-items: center;
   flex-grow: 1;
 
@@ -119,7 +120,8 @@
     color: var(--text-h);
     font-size: 16px;
     border-radius: 6px;
-    background: var(--social-bg);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
     display: flex;
     padding: 6px 12px;
     align-items: center;

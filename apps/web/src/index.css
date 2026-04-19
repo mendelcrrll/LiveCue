@@ -1,12 +1,21 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
+  --text: #352b45;
+  --text-muted: #4e435e;
+  --text-h: #1b1325;
+  --bg: #f4f1f8;
+  --surface: #f7f4fb;
+  --surface-raised: #ffffff;
+  --border: #cbbfda;
   --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
+  --accent: #6b39b0;
+  --primary: #4f2d7f;
+  --primary-contrast: #ffffff;
+  --interactive-bg: #e8def8;
+  --interactive-bg-hover: #ddd0f5;
+  --interactive-text: #35205a;
+  --interactive-border: #8e72bf;
+  --accent-bg: #efe7fb;
+  --accent-border: #8e72bf;
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -32,14 +41,23 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
+    --text: #e2dbed;
+    --text-muted: #c8bddb;
+    --text-h: #f5f1fa;
+    --bg: #16141b;
+    --surface: #211d29;
+    --surface-raised: #2a2433;
+    --border: #514564;
     --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
+    --accent: #d1b4ff;
+    --primary: #5c3894;
+    --primary-contrast: #ffffff;
+    --interactive-bg: #3a275e;
+    --interactive-bg-hover: #47306f;
+    --interactive-text: #f4eeff;
+    --interactive-border: #bda4ea;
+    --accent-bg: #312443;
+    --accent-border: #bda4ea;
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -52,18 +70,20 @@
 
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--text);
 }
 
 #root {
-  width: 1126px;
   max-width: 100%;
   margin: 0 auto;
   text-align: center;
   border-inline: 1px solid var(--border);
-  min-height: 100svh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  background: var(--bg);
 }
 
 h1,
@@ -93,6 +113,7 @@ h2 {
 }
 p {
   margin: 0;
+  color: var(--text);
 }
 
 code,
