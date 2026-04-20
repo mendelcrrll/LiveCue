@@ -50,6 +50,8 @@ function Home() {
         drawerWidth={DRAWER_WIDTH}
         sidebarOpen={sidebarOpen}
         onMenuClick={() => setSidebarOpen((open) => !open)}
+        onSelectNode={setSelectedNodeId}
+        treeData={presentationTree}
       />
       <SideBar
         drawerWidth={DRAWER_WIDTH}
