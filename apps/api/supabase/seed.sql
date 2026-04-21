@@ -1,0 +1,3 @@
+-- Seed data is intentionally empty for now.
+-- The expected workflow is to import live or mocked Google Slides payloads
+-- through the Python ingestion layer after running `supabase db reset --local`.

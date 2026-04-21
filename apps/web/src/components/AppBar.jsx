@@ -54,7 +54,7 @@ export default function PrimarySearchAppBar({
             component="div"
             sx={{ display: { xs: 'none', sm: 'block' } }}
           >
-            Slide Signal
+            Live Cue
           </Typography>
           <SearchBar treeData={treeData} onSelectNode={onSelectNode} />
           <Box sx={{ flexGrow: 1 }} />

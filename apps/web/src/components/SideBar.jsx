@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
@@ -90,13 +90,29 @@ export default function SideBar({
   selectedNodeId,
   onSelectNode,
 }) {
-  const [expandedFolders, setExpandedFolders] = useState(
-    new Set(['lectures', 'lecture-week-1'])
-  );
+  const [expandedFolders, setExpandedFolders] = useState(null);
+
+  const defaultExpandedFolders = useMemo(() => {
+    const nextFolders = new Set();
+    const rootNode = treeData[0];
+
+    if (rootNode?.type === 'folder') {
+      nextFolders.add(rootNode.id);
+    }
+
+    const firstChild = rootNode?.children?.[0];
+    if (firstChild?.type === 'folder') {
+      nextFolders.add(firstChild.id);
+    }
+
+    return nextFolders;
+  }, [treeData]);
+
+  const activeExpandedFolders = expandedFolders ?? defaultExpandedFolders;
 
   const toggleFolder = (folderId) => {
     setExpandedFolders((currentFolders) => {
-      const nextFolders = new Set(currentFolders);
+      const nextFolders = new Set(currentFolders ?? activeExpandedFolders);
 
       if (nextFolders.has(folderId)) {
         nextFolders.delete(folderId);
@@ -154,7 +170,7 @@ export default function SideBar({
         <List disablePadding>
           {renderTree(
             treeData,
-            expandedFolders,
+            activeExpandedFolders,
             toggleFolder,
             selectedNodeId,
             onSelectNode

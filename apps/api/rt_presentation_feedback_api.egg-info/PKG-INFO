@@ -7,6 +7,7 @@ Description-Content-Type: text/markdown
 Requires-Dist: alembic<2.0,>=1.16
 Requires-Dist: fastapi<1.0,>=0.116
 Requires-Dist: httpx<1.0,>=0.28
+Requires-Dist: psycopg[binary]<4.0,>=3.2
 Requires-Dist: pydantic-settings<3.0,>=2.10
 Requires-Dist: python-dotenv<2.0,>=1.1
 Requires-Dist: sqlalchemy<3.0,>=2.0
@@ -47,10 +48,59 @@ The backend owns:
 This scaffold is ready for a FastAPI-based service, but dependencies have not been installed yet.
 
 1. Create a virtual environment: `python -m venv .venv`
-2. Activate it in PowerShell: `.\\.venv\\Scripts\\Activate.ps1`
-3. Install the package and dev tools: `pip install -e .[dev]`
+2. Install the package and dev tools with the venv Python: `.\\.venv\\Scripts\\python.exe -m pip install -e .[dev]`
 
 ## Notes
 
 - `uv` was not available in the current environment, so this setup uses a standard `pyproject.toml` that works with `pip` today and can still be used with `uv` later.
 - Keep secrets out of the repo. Use environment variables or an untracked local env file.
+
+## Local Supabase Workflow
+
+This workspace now includes a local Supabase layout under `apps/api/supabase` for Google Slides persistence.
+
+Recommended setup:
+
+1. Install a Docker-compatible runtime such as Docker Desktop.
+2. From `apps/api`, start the local stack with `npx supabase start`.
+3. Rebuild the local database from migrations with `npx supabase db reset --local`.
+4. Point the Python API to the local Postgres instance with `DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:54322/postgres`.
+
+The initial schema stores:
+
+- one row per Google Slides presentation
+- one row per slide
+- one ordered priority queue per slide
+- one or more pain points per slide
+
+The Python entrypoint for ingesting a Google Slides payload is `app/services/google_integration/presentation_ingest.py`.
+
+## Run The Mock API
+
+To serve the hardcoded mock presentation tree for the web app:
+
+1. Start the API from `apps/api`: `.\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload`
+2. Open `http://127.0.0.1:8000/health` to confirm the service is up.
+
+The frontend reads its mock tree from `GET /api/presentations/tree`.
+
+## Seed One Mock Presentation
+
+To insert one simple mock presentation into the local Supabase database:
+
+1. Make sure the local Supabase stack is running.
+2. From `apps/api`, run: `.\\.venv\\Scripts\\python.exe scripts\\seed_mock_presentation.py`
+
+This inserts:
+
+- one presentation named `intro-slides.pptx`
+- two slides
+- one priority item and one pain point per slide
+
+The script also prints a simple example UI hierarchy:
+
+- `Course Presentations/`
+- `Demo Folder/`
+- `intro-slides.pptx`
+
+Note: the current database schema stores presentations and slides, not folder rows. The printed folder structure is a UI example, while the seeded database rows are the presentation and slide records.

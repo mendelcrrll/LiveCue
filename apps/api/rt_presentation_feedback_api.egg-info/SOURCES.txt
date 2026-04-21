@@ -1,5 +1,14 @@
 README.md
 pyproject.toml
+app/main.py
+app/api/routes/presentations.py
+app/core/config/settings.py
+app/core/database/session.py
+app/domains/decks/google_slides.py
+app/domains/decks/models.py
+app/domains/decks/repository.py
+app/services/mock_presentations.py
+app/services/google_integration/presentation_ingest.py
 rt_presentation_feedback_api.egg-info/PKG-INFO
 rt_presentation_feedback_api.egg-info/SOURCES.txt
 rt_presentation_feedback_api.egg-info/dependency_links.txt
