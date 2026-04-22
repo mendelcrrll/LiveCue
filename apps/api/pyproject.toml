@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rt-presentation-feedback-api"
+name = "rt-presentation-feedback-backend"
 version = "0.1.0"
 description = "Backend services for the RT Presentation Feedback project."
 readme = "README.md"
@@ -33,11 +33,7 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
+include = ["backend*"]
 
 [tool.ruff]
 line-length = 100

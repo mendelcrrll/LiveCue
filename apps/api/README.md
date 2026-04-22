@@ -1,119 +1,74 @@
-# API Workspace
+# Backend
 
-This directory contains the Python backend for the RT Presentation Feedback project.
-
-## Purpose
-
-The backend owns:
-
-- Google authentication handoff and Google Workspace integrations
-- presentation session orchestration
-- transcription and analysis pipelines
-- feedback event generation and streaming
+This workspace contains the Python FastAPI backend for RT Presentation Feedback.
 
 ## Structure
 
-- `app/api`: transport layer such as routes, request schemas, and shared dependencies
-- `app/core`: configuration, logging, security, and database wiring
-- `app/domains`: business logic grouped by product area
-- `app/services`: orchestration and cross-domain workflows
-- `app/providers`: adapters for external vendors and future local models
-- `app/events`: internal event definitions and real-time messaging hooks
-- `app/workers`: background processing entry points
-- `tests`: unit and integration test suites
+- `backend/main.py`: FastAPI app entrypoint
+- `backend/routes`: HTTP endpoints used by the web app
+- `backend/schemas`: request and response models
+- `backend/config.py`: environment-based settings
+- `backend/database.py`: SQLAlchemy engine, base model, and sessions
+- `backend/persistence`: database models, repositories, and workflow tree persistence
+- `backend/google`: Google Slides API integration and Google payload ingestion
+- `backend/ai`: model integration placeholder for feedback generation
+- `backend/transcription`: ASR transcription placeholder
+- `backend/auth`: authentication placeholder
+- `supabase`: local Supabase config, migrations, SQL seed file, and mock seed script
 
-## Recommended Local Setup
+## Setup
 
-This scaffold is ready for a FastAPI-based service, but dependencies have not been installed yet.
+From `apps/api`:
 
-1. Create a virtual environment: `python -m venv .venv`
-2. Install the package and dev tools with the venv Python: `.\\.venv\\Scripts\\python.exe -m pip install -e .[dev]`
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .[dev]
+```
 
-## Notes
+## Run The Backend
 
-- `uv` was not available in the current environment, so this setup uses a standard `pyproject.toml` that works with `pip` today and can still be used with `uv` later.
-- Keep secrets out of the repo. Use environment variables or an untracked local env file.
+From `apps/api`:
 
-## Local Supabase Workflow
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
+```
 
-This workspace now includes a local Supabase layout under `apps/api/supabase` for Google Slides persistence.
+Health check:
 
-Recommended setup:
+```text
+http://127.0.0.1:8000/health
+```
 
-1. Install a Docker-compatible runtime such as Docker Desktop.
-2. From `apps/api`, start the local stack with `npx supabase start`.
-3. Rebuild the local database from migrations with `npx supabase db reset --local`.
-4. Point the Python API to the local Postgres instance with `DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:54322/postgres`.
+## Local Supabase
 
-The initial schema stores:
+From `apps/api/supabase`:
 
-- one row per Google Slides presentation
-- one row per slide
-- one ordered priority queue per slide
-- one or more pain points per slide
-- one workflow tree of folders and files for the UI
+```powershell
+npx supabase start
+npx supabase db reset --local
+```
 
-The Python entrypoint for ingesting a Google Slides payload is `app/services/google_integration/presentation_ingest.py`.
-The backend import route scaffold is `POST /api/presentations/import`.
+The backend defaults to the local Supabase Postgres URL:
 
-## Run The API
+```text
+postgresql+psycopg://postgres:postgres@127.0.0.1:54322/postgres
+```
 
-To serve presentation data for the web app:
+## Seed Mock Data
 
-1. Start the API from `apps/api`: `.\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload`
-2. Open `http://127.0.0.1:8000/health` to confirm the service is up.
+From `apps/api`:
 
-The frontend reads its presentation tree from `GET /api/presentations/tree`, which now
-builds the tree from rows in the local database.
+```powershell
+.\.venv\Scripts\python.exe supabase\seed_mock_presentation.py
+```
 
-## Seed One Mock Presentation
+## Current Endpoints
 
-To insert one simple mock presentation into the local Supabase database:
-
-1. Make sure the local Supabase stack is running.
-2. From `apps/api`, run: `.\\.venv\\Scripts\\python.exe scripts\\seed_mock_presentation.py`
-
-This inserts:
-
-- one presentation named `intro-slides.pptx`
-- two slides
-- one priority item and one pain point per slide
-- one workflow tree with `Course Presentations/Demo Folder/intro-slides.pptx`
-
-The script also prints a simple example UI hierarchy:
-
-- `Course Presentations/`
-- `Demo Folder/`
-- `intro-slides.pptx`
-
-The workflow tree is stored in `workflow_nodes`, so the seeded folder structure is also
-persisted in the database.
-
-## Import Route Scaffold
-
-The backend now exposes:
-
+- `GET /health`
+- `GET /api/presentations/tree`
 - `POST /api/presentations/import`
 - `POST /api/presentations/folders`
 - `POST /api/presentations/files`
 - `DELETE /api/presentations/nodes/{node_id}`
 
-with a JSON body like:
-
-```json
-{
-  "presentation_id": "your-google-slides-id"
-}
-```
-
-This route is wired into the ingestion flow and database write path, but the actual
-Google Slides provider is still a stub. The next implementation step is to replace
-`app/providers/google/slides_client.py` with a real Google Slides API client.
-
-## Local Migration Note
-
-Because the workflow tree now has its own database table, pull the latest changes into the local
-Supabase instance before using the updated UI:
-
-1. `npx supabase db reset --local`
-2. `.\\.venv\\Scripts\\python.exe scripts\\seed_mock_presentation.py`
+The Google Slides API client is still a stub in `backend/google/slides_client.py`.
