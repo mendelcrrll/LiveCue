@@ -12,6 +12,12 @@ from backend.persistence.workflow_tree import (
     get_workflow_tree,
 )
 from backend.schemas.presentations import (
+    BuilderAccessibilityCheck,
+    BuilderPriorityItem,
+    BuilderSlide,
+    BuilderSlideData,
+    BuilderTimingGoal,
+    PresentationBuilderData,
     PresentationImportRequest,
     PresentationImportResponse,
 )
@@ -36,6 +42,20 @@ def get_presentation_tree():
 
 def get_presentation_tree_data(session):
     return get_workflow_tree(session)
+
+
+@router.get("/{presentation_id}/builder-schema", response_model=PresentationBuilderData)
+def get_builder_schema(presentation_id: UUID):
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        return _to_builder_response(presentation)
+    finally:
+        session.close()
 
 
 @router.post("/folders", response_model=WorkflowNodeResponse, status_code=201)
@@ -118,6 +138,75 @@ def _to_import_response(presentation: Presentation) -> PresentationImportRespons
         title=presentation.title,
         slide_count=len(presentation.slides),
     )
+
+
+def _to_builder_response(presentation: Presentation) -> PresentationBuilderData:
+    return PresentationBuilderData(
+        deckId=str(presentation.id),
+        deckTitle=presentation.title,
+        slides=[_to_builder_slide(slide) for slide in presentation.slides],
+    )
+
+
+def _to_builder_slide(slide) -> BuilderSlide:
+    slide_number = slide.slide_index + 1
+    raw_page = slide.raw_page or {}
+    title = raw_page.get("title") or f"Slide {slide_number}"
+    slide_text = raw_page.get("slideText") or raw_page.get("text") or []
+    speaker_notes = raw_page.get("speakerNotes") or raw_page.get("notes") or ""
+
+    if isinstance(slide_text, str):
+        slide_text = [slide_text]
+
+    timing_seconds = slide.time_per_slide_seconds or 60
+
+    return BuilderSlide(
+        slideId=str(slide.id),
+        slideNumber=slide_number,
+        title=title,
+        slideText=slide_text,
+        speakerNotes=speaker_notes,
+        thumbnailUrl=raw_page.get("thumbnailUrl") or raw_page.get("imageUrl"),
+        buildData=BuilderSlideData(
+            priorityItems=[
+                BuilderPriorityItem(
+                    id=str(item.id),
+                    text=item.title,
+                    priority=item.priority_rank,
+                    category=item.extra_data.get("category", "custom"),
+                )
+                for item in slide.priority_items
+            ],
+            accessibilityChecks=_default_accessibility_checks(),
+            timingGoal=BuilderTimingGoal(
+                minutes=timing_seconds // 60,
+                seconds=timing_seconds % 60,
+            ),
+        ),
+    )
+
+
+def _default_accessibility_checks() -> list[BuilderAccessibilityCheck]:
+    return [
+        BuilderAccessibilityCheck(
+            id="explain-jargon",
+            label="Explain jargon",
+            enabled=True,
+            severity="high",
+        ),
+        BuilderAccessibilityCheck(
+            id="read-quotes",
+            label="Read quotes aloud",
+            enabled=True,
+            severity="medium",
+        ),
+        BuilderAccessibilityCheck(
+            id="repeat-questions",
+            label="Repeat audience questions",
+            enabled=False,
+            severity="medium",
+        ),
+    ]
 
 
 def _to_workflow_node_response(node) -> WorkflowNodeResponse:

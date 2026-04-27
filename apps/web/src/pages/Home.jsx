@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -12,6 +13,7 @@ import SideBar from '../components/SideBar';
 import WorkflowActionButtons from '../components/WorkflowActionButtons';
 import WorkflowRequestDialog from '../components/WorkflowRequestDialog';
 import { countFiles, findNodeById } from '../data/presentationTree';
+import PresentationWorkflowService from '../services/PresentationWorkflowService';
 
 const DRAWER_WIDTH = 320;
 
@@ -29,6 +31,7 @@ function getItemLabel(node) {
 }
 
 function Home() {
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const [treeData, setTreeData] = useState([]);
@@ -44,12 +47,7 @@ function Home() {
       setLoading(true);
       setErrorMessage('');
 
-      const response = await fetch('/api/presentations/tree');
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-
-      const payload = await response.json();
+      const payload = await PresentationWorkflowService.getPresentationTree();
       const nextTree = Array.isArray(payload.tree) ? payload.tree : [];
       const fallbackNodeId =
         preferredNodeId ?? nextTree[0]?.id ?? nextTree[0]?.children?.[0]?.id ?? '';
@@ -86,39 +84,23 @@ function Home() {
       return;
     }
 
-    const endpoint =
-      mode === 'folder' ? '/api/presentations/folders' : '/api/presentations/files';
-    const body =
-      mode === 'folder'
-        ? {
-            parent_id: targetFolder.id,
-            name: values.name,
-          }
-        : {
-            parent_id: targetFolder.id,
-            name: values.name,
-            source_kind: mode === 'slides' ? 'google_slides_request' : 'manual',
-            google_presentation_id:
-              mode === 'slides' ? values.googlePresentationId : undefined,
-          };
-
     setSubmittingAction(true);
     setActionError('');
     setActionFeedback('');
 
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.detail ?? `Request failed with status ${response.status}`);
-      }
+      const payload =
+        mode === 'folder'
+          ? await PresentationWorkflowService.createFolder({
+              parentId: targetFolder.id,
+              name: values.name,
+            })
+          : await PresentationWorkflowService.createFile({
+              parentId: targetFolder.id,
+              name: values.name,
+              sourceKind: mode === 'slides' ? 'google_slides_request' : 'manual',
+              googlePresentationId: mode === 'slides' ? values.googlePresentationId : undefined,
+            });
 
       setActionMode(null);
       setActionFeedback(
@@ -153,22 +135,7 @@ function Home() {
     setActionFeedback('');
 
     try {
-      const response = await fetch(`/api/presentations/nodes/${selectedNode.id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        let detail = `Request failed with status ${response.status}`;
-
-        try {
-          const payload = await response.json();
-          detail = payload.detail ?? detail;
-        } catch {
-          // Ignore empty response bodies for delete actions.
-        }
-
-        throw new Error(detail);
-      }
+      await PresentationWorkflowService.deleteNode(selectedNode.id);
 
       setActionFeedback('Item removed successfully.');
       await loadPresentationTree(selectedParent.id);
@@ -179,6 +146,15 @@ function Home() {
     } finally {
       setSubmittingAction(false);
     }
+  }
+
+  function openWorkflowItem(item) {
+    if (item.type === 'file' && item.presentationId) {
+      navigate(`/builder/${item.presentationId}`);
+      return;
+    }
+
+    setSelectedNodeId(item.id);
   }
 
   if (loading) {
@@ -229,7 +205,7 @@ function Home() {
             </Typography>
             <Typography variant="body1" sx={{ color: 'var(--text)' }}>
               Start the Python API from `apps/api` with
-              ` .\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload`, then refresh
+              ` .\\.venv\\Scripts\\python.exe -m uvicorn backend.main:app --reload`, then refresh
               this page.
             </Typography>
             <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
@@ -498,7 +474,7 @@ function Home() {
                     <Paper
                       key={item.id}
                       elevation={0}
-                      onClick={() => setSelectedNodeId(item.id)}
+                      onClick={() => openWorkflowItem(item)}
                       sx={{
                         p: 2.5,
                         borderRadius: 3,
@@ -548,7 +524,9 @@ function Home() {
                         <Typography variant="body2" sx={{ color: 'var(--text)' }}>
                           {item.type === 'folder'
                             ? 'Open this folder to explore and manage its workflow items.'
-                            : 'Select this file to inspect it and manage it from the workflow.'}
+                            : item.presentationId
+                              ? 'Open this deck in the builder schema workspace.'
+                              : 'Select this file to inspect it and manage it from the workflow.'}
                         </Typography>
                       </Stack>
                     </Paper>

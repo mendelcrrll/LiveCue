@@ -1,3 +1,10 @@
+from pathlib import Path
+import sys
+
+API_ROOT = Path(__file__).resolve().parents[1]
+if str(API_ROOT) not in sys.path:
+    sys.path.insert(0, str(API_ROOT))
+
 from backend.database import get_session
 from backend.google.presentation_ingest import ingest_google_slides_presentation
 from backend.persistence.workflow_tree import (
