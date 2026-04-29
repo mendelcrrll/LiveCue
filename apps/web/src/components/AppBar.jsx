@@ -15,7 +15,7 @@ export default function PrimarySearchAppBar({
   treeData,
 }) {
   return (
-    <Box sx={{ flexGrow: 1 }}>
+    <>
       <MuiAppBar
         position="fixed"
         sx={(theme) => ({
@@ -61,6 +61,6 @@ export default function PrimarySearchAppBar({
           <ProfileButton />
         </Toolbar>
       </MuiAppBar>
-    </Box>
+    </>
   );
 }

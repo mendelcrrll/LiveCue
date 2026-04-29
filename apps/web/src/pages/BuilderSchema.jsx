@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -8,19 +8,42 @@ import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import ButtonAppBar from '../components/AppBar';
+import SideBar from '../components/SideBar';
 import SlideBuilderPanel from '../components/SlideBuilderPanel';
 import SlideNavigator from '../components/SlideNavigator';
+import { findNodeById } from '../data/presentationTree';
 import PresentationBuilderService from '../services/PresentationBuilderService';
+import PresentationWorkflowService from '../services/PresentationWorkflowService';
 
 const DRAWER_WIDTH = 320;
 
 function BuilderSchema() {
   const { deckId } = useParams();
+  const navigate = useNavigate();
 
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [treeData, setTreeData] = useState([]);
+  const [selectedNodeId, setSelectedNodeId] = useState('');
   const [presentationData, setPresentationData] = useState(null);
   const [activeSlideId, setActiveSlideId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    async function loadWorkflowTree() {
+      try {
+        const payload = await PresentationWorkflowService.getPresentationTree();
+        const nextTree = Array.isArray(payload.tree) ? payload.tree : [];
+
+        setTreeData(nextTree);
+        setSelectedNodeId(findNodeIdByPresentationId(nextTree, deckId) ?? nextTree[0]?.id ?? '');
+      } catch {
+        setTreeData([]);
+      }
+    }
+
+    loadWorkflowTree();
+  }, [deckId]);
 
   useEffect(() => {
     async function loadBuilderData() {
@@ -62,6 +85,17 @@ function BuilderSchema() {
       presentationData?.slides.find((slide) => slide.slideId === activeSlideId) ?? null
     );
   }, [presentationData, activeSlideId]);
+
+  function handleSelectWorkflowNode(nodeId) {
+    setSelectedNodeId(nodeId);
+
+    const selectedContext = findNodeById(treeData, nodeId);
+    const selectedNode = selectedContext?.node;
+
+    if (selectedNode?.type === 'file' && selectedNode.presentationId) {
+      navigate(`/builder/${selectedNode.presentationId}`);
+    }
+  }
 
   function handleUpdateSlide(slideId, updatedBuildData) {
     setPresentationData((currentData) => {
@@ -114,10 +148,17 @@ function BuilderSchema() {
     <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
       <ButtonAppBar
         drawerWidth={DRAWER_WIDTH}
-        sidebarOpen={false}
-        onMenuClick={() => {}}
-        onSelectNode={() => {}}
-        treeData={[]}
+        sidebarOpen={sidebarOpen}
+        onMenuClick={() => setSidebarOpen((open) => !open)}
+        onSelectNode={handleSelectWorkflowNode}
+        treeData={treeData}
+      />
+      <SideBar
+        drawerWidth={DRAWER_WIDTH}
+        open={sidebarOpen}
+        treeData={treeData}
+        selectedNodeId={selectedNodeId}
+        onSelectNode={handleSelectWorkflowNode}
       />
 
       <Box
@@ -125,7 +166,8 @@ function BuilderSchema() {
         sx={(theme) => ({
           flexGrow: 1,
           minWidth: 0,
-          px: { xs: 2, sm: 3, md: 4 },
+          pl: { xs: 2, sm: 2, md: 2 },
+          pr: { xs: 2, sm: 3, md: 4 },
           pb: 4,
           transition: theme.transitions.create(['padding'], {
             easing: theme.transitions.easing.easeOut,
@@ -187,6 +229,21 @@ function BuilderSchema() {
       </Box>
     </Box>
   );
+}
+
+function findNodeIdByPresentationId(nodes, presentationId) {
+  for (const node of nodes) {
+    if (node.presentationId === presentationId) {
+      return node.id;
+    }
+
+    const childMatch = findNodeIdByPresentationId(node.children ?? [], presentationId);
+    if (childMatch) {
+      return childMatch;
+    }
+  }
+
+  return null;
 }
 
 export default BuilderSchema;
