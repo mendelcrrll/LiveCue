@@ -3,19 +3,11 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import DeleteIcon from '@mui/icons-material/Delete';
 import Box from '@mui/material/Box';
+import ButtonBase from '@mui/material/ButtonBase';
 import IconButton from '@mui/material/IconButton';
-import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-
-const CATEGORY_OPTIONS = [
-  { value: 'must_say', label: 'Must say' },
-  { value: 'explain', label: 'Explain' },
-  { value: 'accessibility', label: 'Accessibility' },
-  { value: 'timing', label: 'Timing' },
-  { value: 'custom', label: 'Custom' },
-];
 
 let nextPriorityItemId = 0;
 
@@ -31,6 +23,35 @@ function normalizePriorities(items) {
   }));
 }
 
+const addGoalRowSx = {
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 1,
+  borderRadius: 1,
+  textAlign: 'left',
+  color: 'var(--text-muted)',
+  '& .add-goal-placeholder': {
+    minHeight: 40,
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 1,
+    px: 1.5,
+    borderRadius: 1,
+    border: '1px dashed var(--interactive-border, #8e72bf)',
+    backgroundColor: 'color-mix(in srgb, var(--surface, #f7f4fb) 70%, transparent)',
+    transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+  },
+  '&:hover': {
+    color: 'var(--text-h)',
+  },
+  '&:hover .add-goal-placeholder, &:focus-visible .add-goal-placeholder': {
+    borderColor: 'var(--interactive-border, #8e72bf)',
+    backgroundColor: 'var(--interactive-bg-hover, #ddd0f5)',
+  },
+};
+
 function PriorityQueueEditor({ items = [], onChange }) {
   const sortedItems = [...items].sort((a, b) => a.priority - b.priority);
 
@@ -45,7 +66,6 @@ function PriorityQueueEditor({ items = [], onChange }) {
         id: createPriorityItemId(),
         text: '',
         priority: sortedItems.length + 1,
-        category: 'custom',
       },
     ]);
   }
@@ -84,8 +104,8 @@ function PriorityQueueEditor({ items = [], onChange }) {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Box>
+      <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+        <Box sx={{ minWidth: 0, mr: 'auto' }}>
           <Typography variant="h6" sx={{ color: 'var(--text-h)' }}>
             Presentation Goals
           </Typography>
@@ -93,10 +113,6 @@ function PriorityQueueEditor({ items = [], onChange }) {
             Prioritize what the presenter should remember for this slide.
           </Typography>
         </Box>
-
-        <IconButton aria-label="Add presentation goal" onClick={addItem}>
-          <AddIcon />
-        </IconButton>
       </Stack>
 
       <Stack spacing={1.5}>
@@ -130,25 +146,6 @@ function PriorityQueueEditor({ items = [], onChange }) {
               fullWidth
             />
 
-            <TextField
-              select
-              label="Category"
-              value={item.category}
-              onChange={(event) =>
-                updateItem(item.id, {
-                  category: event.target.value,
-                })
-              }
-              size="small"
-              sx={{ width: 170 }}
-            >
-              {CATEGORY_OPTIONS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-
             <IconButton
               aria-label={`Move ${item.text || 'goal'} up`}
               onClick={() => moveItem(item.id, -1)}
@@ -174,6 +171,14 @@ function PriorityQueueEditor({ items = [], onChange }) {
           </Stack>
         ))}
       </Stack>
+      <ButtonBase aria-label="Add presentation goal" onClick={addItem} sx={addGoalRowSx}>
+        <Box className="add-goal-placeholder">
+          <AddIcon fontSize="small" />
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            Add presentation goal
+          </Typography>
+        </Box>
+      </ButtonBase>
     </Stack>
   );
 }

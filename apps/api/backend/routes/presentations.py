@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 
 from backend.database import get_session
 from backend.google.presentation_import import import_google_slides_presentation
-from backend.persistence.models import Presentation
+from backend.persistence.models import Presentation, PresentationSlide, SlidePriorityItem
 from backend.persistence.workflow_tree import (
     create_workflow_file,
     create_workflow_folder,
@@ -16,6 +16,7 @@ from backend.schemas.presentations import (
     BuilderPriorityItem,
     BuilderSlide,
     BuilderSlideData,
+    BuilderSlideUpdateRequest,
     BuilderTimingGoal,
     PresentationBuilderData,
     PresentationImportRequest,
@@ -54,6 +55,37 @@ def get_builder_schema(presentation_id: UUID):
             raise HTTPException(status_code=404, detail="Presentation not found.")
 
         return _to_builder_response(presentation)
+    finally:
+        session.close()
+
+
+@router.put(
+    "/{presentation_id}/builder-schema/slides/{slide_id}",
+    response_model=BuilderSlide,
+)
+def update_builder_slide(
+    presentation_id: UUID,
+    slide_id: UUID,
+    payload: BuilderSlideUpdateRequest,
+):
+    session = get_session()
+
+    try:
+        slide = session.get(PresentationSlide, slide_id)
+        if slide is None or slide.presentation_id != presentation_id:
+            raise HTTPException(status_code=404, detail="Slide not found.")
+
+        _apply_builder_slide_data(session, slide, payload.buildData)
+        session.commit()
+        session.refresh(slide)
+
+        return _to_builder_slide(slide)
+    except HTTPException:
+        session.rollback()
+        raise
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         session.close()
 
@@ -177,13 +209,47 @@ def _to_builder_slide(slide) -> BuilderSlide:
                 )
                 for item in slide.priority_items
             ],
-            accessibilityChecks=_default_accessibility_checks(),
+            accessibilityChecks=raw_page.get(
+                "builderAccessibilityChecks",
+                _default_accessibility_checks(),
+            ),
             timingGoal=BuilderTimingGoal(
                 minutes=timing_seconds // 60,
                 seconds=timing_seconds % 60,
             ),
         ),
     )
+
+
+def _apply_builder_slide_data(
+    session,
+    slide: PresentationSlide,
+    build_data: BuilderSlideData,
+) -> None:
+    timing_seconds = build_data.timingGoal.minutes * 60 + build_data.timingGoal.seconds
+    if timing_seconds <= 0:
+        raise ValueError("Timing goal must be greater than zero seconds.")
+
+    slide.time_per_slide_seconds = timing_seconds
+    raw_page = dict(slide.raw_page or {})
+    raw_page["builderAccessibilityChecks"] = [
+        check.model_dump(mode="python") for check in build_data.accessibilityChecks
+    ]
+    slide.raw_page = raw_page
+
+    slide.priority_items.clear()
+    session.flush()
+
+    slide.priority_items = [
+        SlidePriorityItem(
+            priority_rank=index + 1,
+            title=item.text,
+            extra_data={"category": item.category},
+        )
+        for index, item in enumerate(
+            sorted(build_data.priorityItems, key=lambda priority_item: priority_item.priority)
+        )
+    ]
 
 
 def _default_accessibility_checks() -> list[BuilderAccessibilityCheck]:

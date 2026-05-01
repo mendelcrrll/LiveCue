@@ -16,7 +16,7 @@ class BuilderPriorityItem(BaseModel):
     id: str
     text: str
     priority: int
-    category: str
+    category: str = "custom"
 
 
 class BuilderAccessibilityCheck(BaseModel):
@@ -51,3 +51,7 @@ class PresentationBuilderData(BaseModel):
     deckId: str
     deckTitle: str
     slides: list[BuilderSlide]
+
+
+class BuilderSlideUpdateRequest(BaseModel):
+    buildData: BuilderSlideData
