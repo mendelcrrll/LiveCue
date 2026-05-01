@@ -7,6 +7,7 @@ import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
+import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -156,12 +157,14 @@ export default function SideBar({
         }}
       >
         <Typography variant="subtitle1" fontWeight={700}>
-          Folder Tree
+          My Drive
         </Typography>
       </Toolbar>
       <Divider sx={{ borderColor: 'var(--border, #e5e4e7)' }} />
-      <Box
+      <Stack
         sx={{
+          minHeight: 0,
+          flex: 1,
           overflowY: 'auto',
           py: 1,
           color: 'var(--text-h, #08060d)',
@@ -176,7 +179,7 @@ export default function SideBar({
             onSelectNode
           )}
         </List>
-      </Box>
+      </Stack>
     </Drawer>
   );
 }

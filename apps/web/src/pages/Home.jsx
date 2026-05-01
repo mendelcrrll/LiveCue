@@ -2,17 +2,22 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
+import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutlined';
+import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
+import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
+import SlideshowOutlinedIcon from '@mui/icons-material/SlideshowOutlined';
 import ButtonAppBar from '../components/AppBar';
 import SideBar from '../components/SideBar';
 import WorkflowActionButtons from '../components/WorkflowActionButtons';
 import WorkflowRequestDialog from '../components/WorkflowRequestDialog';
-import { countFiles, findNodeById } from '../data/presentationTree';
+import { findNodeById } from '../data/presentationTree';
 import PresentationWorkflowService from '../services/PresentationWorkflowService';
 
 const DRAWER_WIDTH = 320;
@@ -149,12 +154,15 @@ function Home() {
   }
 
   function openWorkflowItem(item) {
-    if (item.type === 'file' && item.presentationId) {
-      navigate(`/builder/${item.presentationId}`);
+    setSelectedNodeId(item.id);
+  }
+
+  function openBuilderSchema(item) {
+    if (!item?.presentationId) {
       return;
     }
 
-    setSelectedNodeId(item.id);
+    navigate(`/builder/${item.presentationId}`);
   }
 
   if (loading) {
@@ -254,10 +262,9 @@ function Home() {
   }
 
   const breadcrumb = selectedContext.path.map((node) => node.name).join(' / ');
-  const visibleItems =
-    selectedNode.type === 'folder'
-      ? selectedNode.children
-      : selectedParent?.children ?? [selectedNode];
+  const activeFolder = selectedNode.type === 'folder' ? selectedNode : selectedParent;
+  const visibleItems = activeFolder?.children ?? [];
+  const selectedFile = selectedNode.type === 'file' ? selectedNode : null;
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
@@ -286,13 +293,14 @@ function Home() {
         sx={(theme) => ({
           flexGrow: 1,
           minWidth: 0,
-          px: { xs: 2, sm: 3, md: 4 },
+          pl: { xs: 2, sm: 2, md: 2 },
+          pr: { xs: 2, sm: 3, md: 4 },
           pb: 4,
           transition: theme.transitions.create(['padding'], {
             easing: theme.transitions.easing.easeOut,
             duration: theme.transitions.duration.enteringScreen,
           }),
-        })}
+        })} 
       >
         <Toolbar />
         <Stack spacing={3} sx={{ mt: 3 }}>
@@ -308,63 +316,30 @@ function Home() {
             </Alert>
           )}
 
-          <Paper
-            elevation={0}
-            sx={{
-              border: '1px solid var(--border, #e5e4e7)',
-              backgroundColor: 'var(--surface-raised, #ffffff)',
-              borderRadius: 3,
-              p: { xs: 3, md: 4 },
-            }}
+          <Stack
+            direction="row"
+            spacing={2}
+            alignItems="center"
+            justifyContent="space-between"
+            useFlexGap
+            flexWrap="wrap"
+            sx={{ width: '100%' }}
           >
-            <Stack spacing={2}>
+            <Box sx={{ minWidth: 0, mr: 'auto', textAlign: 'left' }}>
               <Typography
+                component="h1"
                 variant="overline"
                 sx={{
-                  color: 'var(--accent, #492e7d)',
-                  letterSpacing: 1.5,
+                  color: 'var(--text-muted)',
                   fontWeight: 700,
+                  letterSpacing: 0.8,
                 }}
               >
-                Current Selection
+                {breadcrumb}
               </Typography>
-              <Typography variant="h3" component="h1" sx={{ color: 'var(--text-h)' }}>
-                {selectedNode.name}
-              </Typography>
-              <Typography variant="body1" sx={{ color: 'var(--text)' }}>
-                {selectedNode.type === 'folder'
-                  ? 'Browse the workflow items inside this folder and create new requests.'
-                  : 'You are viewing a file or Google Slides request in the current workflow.'}
-              </Typography>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                <Chip
-                  label={selectedNode.type === 'folder' ? 'Folder' : 'File'}
-                  sx={{
-                    color: 'var(--text-h)',
-                    borderColor: 'var(--interactive-border, #8e72bf)',
-                    backgroundColor: 'var(--surface, #f7f4fb)',
-                    fontWeight: 700,
-                  }}
-                />
-                <Chip
-                  label={getItemLabel(selectedNode)}
-                  variant="outlined"
-                  sx={{
-                    color: 'var(--text-h)',
-                    borderColor: 'var(--interactive-border, #8e72bf)',
-                    backgroundColor: 'var(--surface, #f7f4fb)',
-                  }}
-                />
-                <Chip
-                  label={breadcrumb}
-                  variant="outlined"
-                  sx={{
-                    color: 'var(--text-h)',
-                    borderColor: 'var(--interactive-border, #8e72bf)',
-                    backgroundColor: 'var(--surface, #f7f4fb)',
-                  }}
-                />
-              </Stack>
+            </Box>
+
+            <Box sx={{ flexShrink: 0, ml: 'auto' }}>
               <WorkflowActionButtons
                 canCreate={canCreate}
                 canRemove={canRemove}
@@ -373,168 +348,175 @@ function Home() {
                 onRequestSlides={() => setActionMode('slides')}
                 onRemove={removeSelectedNode}
               />
-              <Typography variant="body2" sx={{ color: 'var(--text-muted, #6b6577)' }}>
-                {targetFolder
-                  ? `New items will be added to ${targetFolder.name}.`
-                  : 'Select a folder to add new workflow items.'}
-              </Typography>
-            </Stack>
-          </Paper>
+            </Box>
+          </Stack>
+
+          {selectedFile && (
+            <Paper
+              elevation={0}
+              sx={{
+                border: '1px solid var(--border, #e5e4e7)',
+                borderRadius: 2,
+                p: { xs: 2, md: 3 },
+                backgroundColor: 'var(--surface-raised, #ffffff)',
+              }}
+            >
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={3}
+                alignItems={{ xs: 'stretch', md: 'center' }}
+              >
+                <Box
+                  sx={{
+                    width: { xs: '100%', md: 340 },
+                    aspectRatio: '16 / 9',
+                    borderRadius: 1.5,
+                    border: '1px solid var(--border, #e5e4e7)',
+                    backgroundColor: 'var(--surface, #f7f4fb)',
+                    display: 'grid',
+                    placeItems: 'center',
+                  }}
+                >
+                  <Stack spacing={1} alignItems="center">
+                    <SlideshowOutlinedIcon sx={{ fontSize: 56, color: 'var(--primary)' }} />
+                    <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+                      Presentation preview
+                    </Typography>
+                  </Stack>
+                </Box>
+
+                <Stack spacing={1.5} sx={{ minWidth: 0, textAlign: 'left', flex: 1 }}>
+                  <Chip
+                    icon={<SlideshowOutlinedIcon />}
+                    label={selectedFile.presentationId ? 'Linked presentation' : 'File'}
+                    sx={{
+                      alignSelf: 'flex-start',
+                      color: 'var(--interactive-text)',
+                      backgroundColor: 'var(--interactive-bg)',
+                      fontWeight: 700,
+                    }}
+                  />
+                  <Typography variant="h5" sx={{ color: 'var(--text-h)' }}>
+                    {selectedFile.name}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+                    {selectedFile.presentationId
+                      ? 'Launch this deck in the builder schema workspace to configure slide goals, timing, and accessibility checks.'
+                      : 'This file is not linked to a presentation yet.'}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<LaunchOutlinedIcon />}
+                    disabled={!selectedFile.presentationId}
+                    onClick={() => openBuilderSchema(selectedFile)}
+                    sx={{ alignSelf: 'flex-start' }}
+                  >
+                    Edit
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          )}
 
           <Box
             sx={{
               display: 'grid',
-              gap: 2,
+              gap: 2.5,
               gridTemplateColumns: {
                 xs: '1fr',
-                md: 'repeat(3, minmax(0, 1fr))',
+                sm: 'repeat(2, minmax(0, 1fr))',
+                xl: 'repeat(3, minmax(260px, 1fr))',
               },
             }}
           >
-            <Paper
-              elevation={0}
-              sx={{
-                border: '1px solid var(--border, #e5e4e7)',
-                borderRadius: 3,
-                p: 3,
-                backgroundColor: 'var(--surface-raised, #fcfbff)',
-              }}
-            >
-              <Typography variant="overline" sx={{ color: 'var(--text-muted)', fontWeight: 700 }}>
-                Visible Items
-              </Typography>
-              <Typography variant="h4" sx={{ color: 'var(--text-h)' }}>
-                {visibleItems.length}
-              </Typography>
-            </Paper>
-            <Paper
-              elevation={0}
-              sx={{
-                border: '1px solid var(--border, #e5e4e7)',
-                borderRadius: 3,
-                p: 3,
-                backgroundColor: 'var(--surface-raised, #fcfbff)',
-              }}
-            >
-              <Typography variant="overline" sx={{ color: 'var(--text-muted)', fontWeight: 700 }}>
-                Total Files
-              </Typography>
-              <Typography variant="h4" sx={{ color: 'var(--text-h)' }}>
-                {countFiles(selectedNode)}
-              </Typography>
-            </Paper>
-            <Paper
-              elevation={0}
-              sx={{
-                border: '1px solid var(--border, #e5e4e7)',
-                borderRadius: 3,
-                p: 3,
-                backgroundColor: 'var(--surface-raised, #fcfbff)',
-              }}
-            >
-              <Typography variant="overline" sx={{ color: 'var(--text-muted)', fontWeight: 700 }}>
-                Viewing From
-              </Typography>
-              <Typography variant="h5" sx={{ color: 'var(--text-h)' }}>
-                {selectedNode.type === 'folder'
-                  ? 'Folder overview'
-                  : selectedParent?.name ?? 'File preview'}
-              </Typography>
-            </Paper>
+            {visibleItems.map((item) => {
+              const isSelected = item.id === selectedNode.id;
+              const isFolder = item.type === 'folder';
+
+              return (
+                <Paper
+                  key={item.id}
+                  elevation={0}
+                  onClick={() => openWorkflowItem(item)}
+                  sx={{
+                    overflow: 'hidden',
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                    border: isSelected
+                      ? '2px solid var(--primary, #492e7d)'
+                      : '1px solid var(--border, #e5e4e7)',
+                    backgroundColor: isSelected
+                      ? 'var(--interactive-bg, #e8def8)'
+                      : 'var(--surface-raised, #ffffff)',
+                    transition: 'transform 180ms ease, border-color 180ms ease',
+                    '&:hover': {
+                      transform: 'translateY(-2px)',
+                      borderColor: 'var(--primary, #492e7d)',
+                    },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      aspectRatio: '16 / 9',
+                      borderBottom: '1px solid var(--border, #e5e4e7)',
+                      backgroundColor: isFolder
+                        ? 'var(--accent-bg, #efe7fb)'
+                        : 'var(--surface, #f7f4fb)',
+                      display: 'grid',
+                      placeItems: 'center',
+                    }}
+                  >
+                    <Stack spacing={1} alignItems="center">
+                      {isFolder ? (
+                        <FolderOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
+                      ) : (
+                        <SlideshowOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
+                      )}
+                      <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+                        {isFolder ? `${item.children.length} items` : 'Preview'}
+                      </Typography>
+                    </Stack>
+                  </Box>
+
+                  <Stack spacing={1.5} sx={{ p: 2, textAlign: 'left' }}>
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <Chip
+                        size="small"
+                        label={isFolder ? 'Folder' : getFileExtension(item.name)}
+                        icon={isFolder ? <FolderOutlinedIcon /> : <SlideshowOutlinedIcon />}
+                        sx={{
+                          backgroundColor: 'var(--interactive-bg, #e8def8)',
+                          color: 'var(--interactive-text, #35205a)',
+                          fontWeight: 700,
+                        }}
+                      />
+                      <Typography variant="caption" sx={{ color: 'var(--text-muted)', fontWeight: 600 }}>
+                        {getItemLabel(item)}
+                      </Typography>
+                    </Stack>
+
+                    <Typography variant="h6" sx={{ color: 'var(--text-h)' }}>
+                      {item.name}
+                    </Typography>
+
+                    {isFolder && (
+                      <Button
+                        variant="outlined"
+                        startIcon={<CreateNewFolderOutlinedIcon />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openWorkflowItem(item);
+                        }}
+                        fullWidth
+                      >
+                        Open Folder
+                      </Button>
+                    )}
+                  </Stack>
+                </Paper>
+              );
+            })}
           </Box>
-
-          <Paper
-            elevation={0}
-            sx={{
-              border: '1px solid var(--border, #e5e4e7)',
-              borderRadius: 3,
-              p: { xs: 2, md: 3 },
-              backgroundColor: 'var(--surface-raised, #ffffff)',
-            }}
-          >
-            <Stack spacing={2}>
-              <Typography variant="h5" sx={{ color: 'var(--text-h)' }}>
-                {selectedNode.type === 'folder' ? 'Contents' : 'Related files in this folder'}
-              </Typography>
-              <Box
-                sx={{
-                  display: 'grid',
-                  gap: 2,
-                  gridTemplateColumns: {
-                    xs: '1fr',
-                    sm: 'repeat(2, minmax(0, 1fr))',
-                    xl: 'repeat(3, minmax(0, 1fr))',
-                  },
-                }}
-              >
-                {visibleItems.map((item) => {
-                  const isSelected = item.id === selectedNode.id;
-
-                  return (
-                    <Paper
-                      key={item.id}
-                      elevation={0}
-                      onClick={() => openWorkflowItem(item)}
-                      sx={{
-                        p: 2.5,
-                        borderRadius: 3,
-                        cursor: 'pointer',
-                        border: isSelected
-                          ? '2px solid var(--primary, #492e7d)'
-                          : '1px solid var(--border, #e5e4e7)',
-                        backgroundColor: isSelected
-                          ? 'var(--interactive-bg, #e8def8)'
-                          : 'var(--surface-raised, #fcfbff)',
-                        transition: 'transform 180ms ease, border-color 180ms ease',
-                        '&:hover': {
-                          transform: 'translateY(-2px)',
-                          borderColor: 'var(--primary, #492e7d)',
-                          backgroundColor: isSelected
-                            ? 'var(--interactive-bg-hover, #ddd0f5)'
-                            : 'var(--surface, #f7f4fb)',
-                        },
-                      }}
-                    >
-                      <Stack spacing={1.5}>
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          alignItems="center"
-                          justifyContent="space-between"
-                        >
-                          <Chip
-                            size="small"
-                            label={item.type === 'folder' ? 'Folder' : getFileExtension(item.name)}
-                            sx={{
-                              backgroundColor: 'var(--interactive-bg, #e8def8)',
-                              color: 'var(--interactive-text, #35205a)',
-                              fontWeight: 700,
-                            }}
-                          />
-                          <Typography
-                            variant="caption"
-                            sx={{ color: 'var(--text-muted)', fontWeight: 600 }}
-                          >
-                            {getItemLabel(item)}
-                          </Typography>
-                        </Stack>
-                        <Typography variant="h6" sx={{ color: 'var(--text-h)' }}>
-                          {item.name}
-                        </Typography>
-                        <Typography variant="body2" sx={{ color: 'var(--text)' }}>
-                          {item.type === 'folder'
-                            ? 'Open this folder to explore and manage its workflow items.'
-                            : item.presentationId
-                              ? 'Open this deck in the builder schema workspace.'
-                              : 'Select this file to inspect it and manage it from the workflow.'}
-                        </Typography>
-                      </Stack>
-                    </Paper>
-                  );
-                })}
-              </Box>
-            </Stack>
-          </Paper>
         </Stack>
       </Box>
       {actionMode && (

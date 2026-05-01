@@ -15,7 +15,7 @@ function SlideNavigator({ slides = [], activeSlideId = null, onSelectSlide }) {
         Slides
       </Typography>
 
-      <Stack spacing={1}>
+      <Stack spacing={1} alignItems="center">
         {sortedSlides.map((slide) => {
           const isActive = slide.slideId === activeSlideId;
           const slideImage = slide.thumbnailUrl ?? slide.imageUrl;
@@ -26,9 +26,11 @@ function SlideNavigator({ slides = [], activeSlideId = null, onSelectSlide }) {
               onClick={() => onSelectSlide(slide.slideId)}
               sx={{
                 width: '100%',
-                display: 'block',
+                display: 'flex',
+                justifyContent: 'center',
                 textAlign: 'left',
                 borderRadius: 2,
+                boxSizing: 'border-box',
               }}
             >
               <Paper
@@ -37,6 +39,7 @@ function SlideNavigator({ slides = [], activeSlideId = null, onSelectSlide }) {
                   width: '100%',
                   p: 1,
                   borderRadius: 2,
+                  boxSizing: 'border-box',
                   border: isActive
                     ? '2px solid var(--primary, #492e7d)'
                     : '1px solid var(--border, #e5e4e7)',
@@ -66,7 +69,8 @@ function SlideNavigator({ slides = [], activeSlideId = null, onSelectSlide }) {
                         sx={{
                           width: '100%',
                           height: '100%',
-                          objectFit: 'cover',
+                          objectFit: 'contain',
+                          objectPosition: 'center',
                           display: 'block',
                         }}
                       />
