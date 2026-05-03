@@ -84,5 +84,10 @@ From `apps/api`:
 - `DELETE /api/presentations/nodes/{node_id}`
 
 The Google Slides API client is still a stub in `backend/google/slides_client.py`.
+
 ## Google OAuth
 test google auth login: http://127.0.0.1:8000/api/auth/google/login
+check session info: /api/auth/debug/session
+get slides: http://127.0.0.1:8000/api/google/presentations/<id>
+
+
