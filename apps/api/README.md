@@ -25,6 +25,15 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .[dev]
 ```
 
+MacOS:
+``` 
+    cd apps/api
+    python3 -m venv .venv
+    source .venv/bin/activate
+    python -m pip install -U pip
+    python -m pip install -e ".[dev]"
+```
+
 ## Run The Backend
 
 From `apps/api`:
@@ -32,7 +41,10 @@ From `apps/api`:
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
 ```
-
+MacOS:
+```
+    python -m uvicorn backend.main:app --reload 
+```
 Health check:
 
 ```text
@@ -72,3 +84,5 @@ From `apps/api`:
 - `DELETE /api/presentations/nodes/{node_id}`
 
 The Google Slides API client is still a stub in `backend/google/slides_client.py`.
+## Google OAuth
+test google auth login: http://127.0.0.1:8000/api/auth/google/login

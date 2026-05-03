@@ -1,11 +1,16 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve `.env` next to `apps/api/` so OAuth vars load when uvicorn runs from the repo root.
+_API_ROOT = Path(__file__).resolve().parent.parent
+_ENV_FILE = _API_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -14,7 +19,7 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
 
-    database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:54322/postgres"
+    database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:54332/postgres"
     supabase_url: str = "http://127.0.0.1:54321"
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
@@ -22,6 +27,9 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = ""
+
+    # Where the browser should land after completing Google OAuth.
+    frontend_oauth_redirect_url: str = "http://localhost:5173/"
 
     llm_provider: str = ""
     stt_provider: str = ""
