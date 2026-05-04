@@ -2,7 +2,7 @@ import './App.css'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import BuilderSchema from './pages/BuilderSchema'
 import Home from './pages/Home'
-import PresentationSchemaPage from './pages/PresentationSchemaPage'
+import PresentationSchemaPage from './pages/PresentationSchema'
 
 function App() {
   return (

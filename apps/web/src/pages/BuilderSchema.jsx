@@ -18,6 +18,7 @@ import SlideNavigator from '../components/SlideNavigator';
 import { findNodeById } from '../data/presentationTree';
 import PresentationBuilderService from '../services/PresentationBuilderService';
 import PresentationWorkflowService from '../services/PresentationWorkflowService';
+import { sortSlidesByNumber } from '../utils/slideUtils';
 
 const DRAWER_WIDTH = 320;
 const NAVIGATOR_MIN_WIDTH = 180;
@@ -97,8 +98,8 @@ function BuilderSchema() {
         setError('');
 
         const data = await PresentationBuilderService.getSlideDeckBuild(deckId);
-        const slides = Array.isArray(data.slides) ? data.slides : [];
-        const firstSlide = [...slides].sort((a, b) => a.slideNumber - b.slideNumber)[0];
+        const slides = sortSlidesByNumber(Array.isArray(data.slides) ? data.slides : []);
+        const firstSlide = slides[0];
 
         setPresentationData({
           ...data,
@@ -284,7 +285,13 @@ function BuilderSchema() {
   }
 
   function handleLaunchPresentationMode() {
-    window.open(`/presentation-schema/${deckId}`, '_blank', 'noopener,noreferrer');
+    const slideParam = activeSlideId ? `?slideId=${encodeURIComponent(activeSlideId)}` : '';
+    const slideOnlyParam = activeSlideId
+      ? `?mode=slide&slideId=${encodeURIComponent(activeSlideId)}`
+      : '?mode=slide';
+
+    window.open(`/presentation-schema/${deckId}${slideOnlyParam}`, '_blank', 'noopener,noreferrer');
+    navigate(`/presentation-schema/${deckId}${slideParam}`);
   }
 
   function clampNavigatorWidth(width) {
