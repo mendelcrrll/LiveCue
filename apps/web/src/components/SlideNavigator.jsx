@@ -1,13 +1,12 @@
-import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { sortSlidesByNumber } from '../utils/slideUtils';
+import SlidePreview from './SlidePreview';
 
 function SlideNavigator({ slides = [], activeSlideId = null, onSelectSlide }) {
-  const sortedSlides = [...slides].sort(
-    (a, b) => a.slideNumber - b.slideNumber
-  );
+  const sortedSlides = sortSlidesByNumber(slides);
 
   return (
     <Stack spacing={1}>
@@ -18,7 +17,6 @@ function SlideNavigator({ slides = [], activeSlideId = null, onSelectSlide }) {
       <Stack spacing={1} alignItems="center">
         {sortedSlides.map((slide) => {
           const isActive = slide.slideId === activeSlideId;
-          const slideImage = slide.thumbnailUrl ?? slide.imageUrl;
 
           return (
             <ButtonBase
@@ -49,40 +47,7 @@ function SlideNavigator({ slides = [], activeSlideId = null, onSelectSlide }) {
                 }}
               >
                 <Stack spacing={1}>
-                  <Box
-                    sx={{
-                      width: '100%',
-                      aspectRatio: '16 / 9',
-                      borderRadius: 1.5,
-                      overflow: 'hidden',
-                      backgroundColor: 'var(--surface, #f7f4fb)',
-                      border: '1px solid var(--border, #e5e4e7)',
-                      display: 'grid',
-                      placeItems: 'center',
-                    }}
-                  >
-                    {slideImage ? (
-                      <Box
-                        component="img"
-                        src={slideImage}
-                        alt={`Slide ${slide.slideNumber}`}
-                        sx={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'contain',
-                          objectPosition: 'center',
-                          display: 'block',
-                        }}
-                      />
-                    ) : (
-                      <Typography
-                        variant="caption"
-                        sx={{ color: 'var(--text-muted)' }}
-                      >
-                        No preview
-                      </Typography>
-                    )}
-                  </Box>
+                  <SlidePreview slide={slide} borderRadius={1.5} />
 
                   <Stack spacing={0.25}>
                     <Typography
