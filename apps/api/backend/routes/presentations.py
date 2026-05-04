@@ -1,5 +1,6 @@
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Cookie, HTTPException, Response, status
 
 from backend.database import get_session
@@ -85,6 +86,9 @@ def update_builder_slide(
     except HTTPException:
         session.rollback()
         raise
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -147,6 +151,9 @@ async def create_file(
     except HTTPException:
         session.rollback()
         raise
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -191,6 +198,9 @@ async def import_presentation(
     except NotImplementedError as exc:
         session.rollback()
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
     except Exception:
         session.rollback()
         raise
@@ -205,6 +215,15 @@ def _to_import_response(presentation: Presentation) -> PresentationImportRespons
         title=presentation.title,
         slide_count=len(presentation.slides),
     )
+
+
+def _google_api_exception(exc: httpx.HTTPStatusError) -> HTTPException:
+    try:
+        detail = exc.response.json()
+    except ValueError:
+        detail = exc.response.text
+
+    return HTTPException(status_code=exc.response.status_code, detail=detail)
 
 
 def _to_builder_response(presentation: Presentation) -> PresentationBuilderData:

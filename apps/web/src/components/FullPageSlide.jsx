@@ -22,17 +22,29 @@ function FullPageSlide({ slide, slideCount }) {
     >
       {slideImage ? (
         <Box
-          component="img"
-          src={slideImage}
-          alt={`Slide ${slide.slideNumber}`}
           sx={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-            objectPosition: 'center',
-            display: 'block',
+            width: 'min(100vw, calc(100vh * 16 / 9))',
+            height: 'min(100vh, calc(100vw * 9 / 16))',
+            aspectRatio: '16 / 9',
+            backgroundColor: '#E3DFD6',
+            display: 'grid',
+            placeItems: 'center',
+            overflow: 'hidden',
           }}
-        />
+        >
+          <Box
+            component="img"
+            src={slideImage}
+            alt={`Slide ${slide.slideNumber}`}
+            sx={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              objectPosition: 'center',
+              display: 'block',
+            }}
+          />
+        </Box>
       ) : (
         <Stack spacing={1} alignItems="center" sx={{ p: 3, textAlign: 'center' }}>
           <SlideshowOutlinedIcon sx={{ color: '#ffffff' }} />
@@ -50,17 +62,17 @@ function SlideOnlyIndicator({ slide, slideCount }) {
     <Box
       sx={{
         position: 'fixed',
-        left: 20,
-        bottom: 20,
+        left: 3,
+        bottom: 3,
         zIndex: 1400,
-        px: 2,
-        py: 1,
-        borderRadius: 1,
+        px: 1.2,
+        py: 0.45,
+        borderRadius: 0.75,
         backgroundColor: 'rgba(0, 0, 0, 0.78)',
         color: '#ffffff',
         border: '1px solid rgba(255, 255, 255, 0.28)',
-        boxShadow: '0 8px 28px rgba(0, 0, 0, 0.38)',
-        maxWidth: 'min(520px, calc(100vw - 40px))',
+        boxShadow: '0 6px 18px rgba(0, 0, 0, 0.32)',
+        maxWidth: 'min(320px, calc(100vw - 20px))',
         boxSizing: 'border-box',
         textAlign: 'left',
       }}
@@ -70,7 +82,8 @@ function SlideOnlyIndicator({ slide, slideCount }) {
         sx={{
           color: 'inherit',
           fontWeight: 800,
-          lineHeight: 1.2,
+          fontSize: '0.82rem',
+          lineHeight: 1.1,
         }}
       >
         Slide {slide.slideNumber}
@@ -81,8 +94,9 @@ function SlideOnlyIndicator({ slide, slideCount }) {
           variant="body2"
           sx={{
             color: 'rgba(255, 255, 255, 0.84)',
-            lineHeight: 1.25,
-            mt: 0.25,
+            fontSize: '0.72rem',
+            lineHeight: 1.15,
+            mt: 0.15,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',

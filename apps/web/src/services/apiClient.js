@@ -1,5 +1,7 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+
 async function requestJson(path, options = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(resolveApiUrl(path), {
     credentials: 'include',
     ...options,
   });
@@ -22,6 +24,14 @@ async function requestJson(path, options = {}) {
   }
 
   return response.json();
+}
+
+function resolveApiUrl(path) {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  return path.startsWith('/api') ? `${API_BASE_URL}${path}` : path;
 }
 
 function jsonRequestOptions(method, body) {

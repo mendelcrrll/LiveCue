@@ -191,6 +191,54 @@ function PresentationSchemaPage() {
     };
   }, [deckId, presentationData]);
 
+  useEffect(() => {
+    if (!deckId || isSlideOnlyMode) {
+      return undefined;
+    }
+
+    function requestSlideOnlyTabClose() {
+      writeSlideOnlyCommandToStorage(deckId, {
+        type: 'close',
+        createdAt: Date.now(),
+      });
+    }
+
+    window.addEventListener('beforeunload', requestSlideOnlyTabClose);
+
+    return () => {
+      window.removeEventListener('beforeunload', requestSlideOnlyTabClose);
+      requestSlideOnlyTabClose();
+    };
+  }, [deckId, isSlideOnlyMode]);
+
+  useEffect(() => {
+    if (!deckId || !isSlideOnlyMode) {
+      return undefined;
+    }
+
+    function handleStorage(event) {
+      if (event.key !== getSlideOnlyCommandStorageKey(deckId) || !event.newValue) {
+        return;
+      }
+
+      try {
+        const command = JSON.parse(event.newValue);
+
+        if (command.type === 'close') {
+          window.close();
+        }
+      } catch {
+        // Ignore malformed storage events from older tabs.
+      }
+    }
+
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [deckId, isSlideOnlyMode]);
+
   function handleSelectSlide(nextSlideId) {
     const nextParams = new URLSearchParams(searchParams);
 
@@ -461,6 +509,10 @@ function getActiveSlideStorageKey(deckId) {
   return `presentation-schema:${deckId}:active-slide`;
 }
 
+function getSlideOnlyCommandStorageKey(deckId) {
+  return `presentation-schema:${deckId}:slide-window-command`;
+}
+
 function writeActiveSlideToStorage(deckId, slideId) {
   if (!deckId || !slideId) {
     return;
@@ -470,6 +522,21 @@ function writeActiveSlideToStorage(deckId, slideId) {
     window.localStorage.setItem(getActiveSlideStorageKey(deckId), slideId);
   } catch {
     // If browser storage is unavailable, the current tab still works normally.
+  }
+}
+
+function writeSlideOnlyCommandToStorage(deckId, command) {
+  if (!deckId) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      getSlideOnlyCommandStorageKey(deckId),
+      JSON.stringify(command)
+    );
+  } catch {
+    // If browser storage is unavailable, users can still close the slide tab manually.
   }
 }
 

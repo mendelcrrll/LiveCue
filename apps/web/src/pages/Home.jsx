@@ -15,6 +15,7 @@ import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
 import SlideshowOutlinedIcon from '@mui/icons-material/SlideshowOutlined';
 import ButtonAppBar from '../components/AppBar';
 import SideBar from '../components/SideBar';
+import SlidePreview from '../components/SlidePreview';
 import WorkflowActionButtons from '../components/WorkflowActionButtons';
 import WorkflowRequestDialog from '../components/WorkflowRequestDialog';
 import { findNodeById } from '../data/presentationTree';
@@ -375,14 +376,25 @@ function Home() {
                     backgroundColor: 'var(--surface, #f7f4fb)',
                     display: 'grid',
                     placeItems: 'center',
+                    overflow: 'hidden',
                   }}
                 >
-                  <Stack spacing={1} alignItems="center">
-                    <SlideshowOutlinedIcon sx={{ fontSize: 56, color: 'var(--primary)' }} />
-                    <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                      Presentation preview
-                    </Typography>
-                  </Stack>
+                  {selectedFile.thumbnailUrl ? (
+                    <SlidePreview
+                      slide={{
+                        slideNumber: 1,
+                        thumbnailUrl: selectedFile.thumbnailUrl,
+                      }}
+                      borderRadius={1.5}
+                    />
+                  ) : (
+                    <Stack spacing={1} alignItems="center">
+                      <SlideshowOutlinedIcon sx={{ fontSize: 56, color: 'var(--primary)' }} />
+                      <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+                        Presentation preview
+                      </Typography>
+                    </Stack>
+                  )}
                 </Box>
 
                 <Stack spacing={1.5} sx={{ minWidth: 0, textAlign: 'left', flex: 1 }}>
@@ -464,8 +476,22 @@ function Home() {
                         : 'var(--surface, #f7f4fb)',
                       display: 'grid',
                       placeItems: 'center',
+                      overflow: 'hidden',
                     }}
                   >
+                    {!isFolder && item.thumbnailUrl ? (
+                      <SlidePreview
+                        slide={{
+                          slideNumber: 1,
+                          thumbnailUrl: item.thumbnailUrl,
+                        }}
+                        borderRadius={0}
+                        sx={{
+                          border: 0,
+                          borderRadius: 0,
+                        }}
+                      />
+                    ) : (
                     <Stack spacing={1} alignItems="center">
                       {isFolder ? (
                         <FolderOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
@@ -476,6 +502,7 @@ function Home() {
                         {isFolder ? `${item.children.length} items` : 'Preview'}
                       </Typography>
                     </Stack>
+                    )}
                   </Box>
 
                   <Stack spacing={1.5} sx={{ p: 2, textAlign: 'left' }}>
