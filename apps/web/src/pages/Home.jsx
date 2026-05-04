@@ -112,7 +112,7 @@ function Home() {
         mode === 'folder'
           ? 'Folder created successfully.'
           : mode === 'slides'
-            ? 'Google Slides request added to the workflow.'
+            ? 'Google Slides deck imported and linked successfully.'
             : 'File created successfully.'
       );
       await loadPresentationTree(payload.id);

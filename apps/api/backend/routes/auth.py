@@ -45,6 +45,19 @@ GOOGLE_CREDENTIALS_BY_USER_ID: dict[str, StoredGoogleCredentials] = {}
 SESSIONS_BY_ID: dict[str, StoredSession] = {}
 
 
+def get_google_credentials_for_session(
+    session_id: str | None,
+) -> StoredGoogleCredentials | None:
+    if not session_id:
+        return None
+
+    session = SESSIONS_BY_ID.get(session_id)
+    if session is None:
+        return None
+
+    return GOOGLE_CREDENTIALS_BY_USER_ID.get(session.user_id)
+
+
 def _is_secure_cookie() -> bool:
     settings = get_settings()
     env = str(getattr(settings, "environment", "")).lower()

@@ -19,6 +19,9 @@ export default function PrimarySearchAppBar({
 }) {
   const navigate = useNavigate();
   const handleHomeClick = onHomeClick ?? (() => navigate('/'));
+  const handleGoogleConnect = () => {
+    window.location.assign('/api/auth/google/login');
+  };
 
   return (
     <>
@@ -73,7 +76,7 @@ export default function PrimarySearchAppBar({
           >
             <HomeOutlinedIcon />
           </IconButton>
-          <ProfileButton />
+          <ProfileButton onGoogleConnect={handleGoogleConnect} />
         </Toolbar>
       </MuiAppBar>
     </>

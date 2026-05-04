@@ -1,5 +1,8 @@
 async function requestJson(path, options = {}) {
-  const response = await fetch(path, options);
+  const response = await fetch(path, {
+    credentials: 'include',
+    ...options,
+  });
 
   if (!response.ok) {
     let detail = `Request failed with status ${response.status}`;
@@ -24,6 +27,7 @@ async function requestJson(path, options = {}) {
 function jsonRequestOptions(method, body) {
   return {
     method,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
