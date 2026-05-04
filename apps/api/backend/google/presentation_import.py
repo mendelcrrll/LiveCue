@@ -5,13 +5,12 @@ from backend.google.slides_client import GoogleSlidesClient
 from backend.persistence.models import Presentation
 
 
-def import_google_slides_presentation(
+async def import_google_slides_presentation(
     session,
     presentation_id: str,
-    slides_client: GoogleSlidesClient | None = None,
+    slides_client: GoogleSlidesClient,
 ) -> Presentation:
-    client = slides_client or GoogleSlidesClient()
-    presentation_payload = client.fetch_presentation(presentation_id)
+    presentation_payload = await slides_client.fetch_presentation(presentation_id)
     presentation = ingest_google_slides_presentation(
         session=session,
         presentation_payload=presentation_payload,

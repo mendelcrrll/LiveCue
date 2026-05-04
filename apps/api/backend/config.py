@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = ""
 
+    # Where the browser should land after completing Google OAuth.
+    frontend_oauth_redirect_url: str = "http://localhost:5173/"
+
     llm_provider: str = ""
     stt_provider: str = ""
 
