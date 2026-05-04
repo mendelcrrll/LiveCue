@@ -22,10 +22,10 @@ const DIALOG_COPY = {
     submitLabel: 'Create File',
   },
   slides: {
-    title: 'Request Google Slides',
+    title: 'Import Google Slides',
     nameLabel: 'Display name',
-    helperText: 'Create a workflow request for a Google Slides deck.',
-    submitLabel: 'Add Request',
+    helperText: 'Import a Google Slides deck into the selected folder.',
+    submitLabel: 'Import Slides',
   },
 };
 

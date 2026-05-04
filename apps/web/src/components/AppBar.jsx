@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import MuiAppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Toolbar from '@mui/material/Toolbar';
@@ -6,6 +7,7 @@ import Typography from '@mui/material/Typography';
 import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useNavigate } from 'react-router-dom';
+import { requestJson } from '../services/apiClient';
 import SearchBar from './SearchBar';
 import ProfileButton from './ProfileButton';
 
@@ -18,7 +20,44 @@ export default function PrimarySearchAppBar({
   treeData,
 }) {
   const navigate = useNavigate();
+  const [authState, setAuthState] = useState({
+    isAuthenticated: false,
+    userName: 'Guest',
+  });
   const handleHomeClick = onHomeClick ?? (() => navigate('/'));
+  const handleGoogleConnect = () => {
+    window.location.assign('http://127.0.0.1:8000/api/auth/google/login');
+  };
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadAuthState() {
+      try {
+        const session = await requestJson('http://127.0.0.1:8000/api/auth/session');
+
+        if (isActive) {
+          setAuthState({
+            isAuthenticated: Boolean(session.isAuthenticated),
+            userName: session.userName || 'Guest',
+          });
+        }
+      } catch {
+        if (isActive) {
+          setAuthState({
+            isAuthenticated: false,
+            userName: 'Guest',
+          });
+        }
+      }
+    }
+
+    loadAuthState();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   return (
     <>
@@ -73,7 +112,11 @@ export default function PrimarySearchAppBar({
           >
             <HomeOutlinedIcon />
           </IconButton>
-          <ProfileButton />
+          <ProfileButton
+            isAuthenticated={authState.isAuthenticated}
+            userName={authState.userName}
+            onGoogleConnect={handleGoogleConnect}
+          />
         </Toolbar>
       </MuiAppBar>
     </>

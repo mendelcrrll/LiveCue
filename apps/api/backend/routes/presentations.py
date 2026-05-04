@@ -1,10 +1,12 @@
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Cookie, HTTPException, Response, status
 
 from backend.database import get_session
 from backend.google.presentation_import import import_google_slides_presentation
 from backend.google.slides_client import GoogleSlidesClient
+from backend.routes.auth import get_google_credentials_for_session
 from backend.persistence.models import Presentation, PresentationSlide, SlidePriorityItem
 from backend.persistence.workflow_tree import (
     create_workflow_file,
@@ -84,6 +86,9 @@ def update_builder_slide(
     except HTTPException:
         session.rollback()
         raise
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -110,18 +115,45 @@ def create_folder(payload: WorkflowFolderCreateRequest):
 
 
 @router.post("/files", response_model=WorkflowNodeResponse, status_code=201)
-def create_file(payload: WorkflowFileCreateRequest):
+async def create_file(
+    payload: WorkflowFileCreateRequest,
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
     session = get_session()
 
     try:
+        presentation = None
+
+        if payload.source_kind == "google_slides_request":
+            credentials = get_google_credentials_for_session(session_id)
+            if credentials is None:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Missing Google session. Connect Google and try again.",
+                )
+
+            slides_client = GoogleSlidesClient(access_token=credentials.access_token)
+            presentation = await import_google_slides_presentation(
+                session=session,
+                presentation_id=payload.google_presentation_id,
+                slides_client=slides_client,
+            )
+
         node = create_workflow_file(
             session=session,
             parent_id=payload.parent_id,
             name=payload.name,
             source_kind=payload.source_kind,
             google_presentation_id=payload.google_presentation_id,
+            presentation=presentation,
         )
         return _to_workflow_node_response(node)
+    except HTTPException:
+        session.rollback()
+        raise
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -147,15 +179,16 @@ def delete_node(node_id: UUID):
 @router.post("/import", response_model=PresentationImportResponse, status_code=201)
 async def import_presentation(
     payload: PresentationImportRequest,
-    google_access_token: str | None = Cookie(default=None, alias="google_access_token"),
+    session_id: str | None = Cookie(default=None, alias="session_id"),
 ):
-    if not google_access_token:
-        raise HTTPException(status_code=401, detail="Missing Google access token. Re-authenticate.")
+    credentials = get_google_credentials_for_session(session_id)
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Missing Google session. Re-authenticate.")
 
     session = get_session()
 
     try:
-        slides_client = GoogleSlidesClient(access_token=google_access_token)
+        slides_client = GoogleSlidesClient(access_token=credentials.access_token)
         presentation = await import_google_slides_presentation(
             session=session,
             presentation_id=payload.presentation_id,
@@ -165,6 +198,9 @@ async def import_presentation(
     except NotImplementedError as exc:
         session.rollback()
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
     except Exception:
         session.rollback()
         raise
@@ -179,6 +215,15 @@ def _to_import_response(presentation: Presentation) -> PresentationImportRespons
         title=presentation.title,
         slide_count=len(presentation.slides),
     )
+
+
+def _google_api_exception(exc: httpx.HTTPStatusError) -> HTTPException:
+    try:
+        detail = exc.response.json()
+    except ValueError:
+        detail = exc.response.text
+
+    return HTTPException(status_code=exc.response.status_code, detail=detail)
 
 
 def _to_builder_response(presentation: Presentation) -> PresentationBuilderData:
