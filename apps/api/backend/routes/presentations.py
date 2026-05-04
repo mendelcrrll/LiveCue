@@ -5,10 +5,7 @@ from fastapi import APIRouter, Cookie, HTTPException, Response, status
 from backend.database import get_session
 from backend.google.presentation_import import import_google_slides_presentation
 from backend.google.slides_client import GoogleSlidesClient
-<<<<<<< apps/api/backend/routes/presentations.py
-=======
 from backend.persistence.models import Presentation, PresentationSlide, SlidePriorityItem
->>>>>>> apps/api/backend/routes/presentations.py
 from backend.persistence.workflow_tree import (
     create_workflow_file,
     create_workflow_folder,
