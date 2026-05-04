@@ -3,14 +3,12 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Resolve `.env` next to `apps/api/` so OAuth vars load when uvicorn runs from the repo root.
-_API_ROOT = Path(__file__).resolve().parent.parent
-_ENV_FILE = _API_ROOT / ".env"
+API_ROOT = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=_ENV_FILE,
+        env_file=API_ROOT / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -20,7 +18,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:54332/postgres"
-    supabase_url: str = "http://127.0.0.1:54321"
+    supabase_url: str = "http://127.0.0.1:54331"
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
 

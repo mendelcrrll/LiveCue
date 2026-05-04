@@ -126,6 +126,7 @@ def _serialize_node(node: WorkflowNode) -> dict[str, Any]:
         "id": str(node.id),
         "type": node.node_type,
         "name": node.name,
+        "presentationId": str(node.presentation_id) if node.presentation_id is not None else None,
         "sourceKind": node.source_kind,
         "googlePresentationId": node.google_presentation_id,
         "children": [],

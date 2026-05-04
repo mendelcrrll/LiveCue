@@ -3,7 +3,9 @@ import Box from '@mui/material/Box';
 import Toolbar from '@mui/material/Toolbar';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
+import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
+import { useNavigate } from 'react-router-dom';
 import SearchBar from './SearchBar';
 import ProfileButton from './ProfileButton';
 
@@ -11,11 +13,15 @@ export default function PrimarySearchAppBar({
   drawerWidth,
   sidebarOpen,
   onMenuClick,
+  onHomeClick,
   onSelectNode,
   treeData,
 }) {
+  const navigate = useNavigate();
+  const handleHomeClick = onHomeClick ?? (() => navigate('/'));
+
   return (
-    <Box sx={{ flexGrow: 1 }}>
+    <>
       <MuiAppBar
         position="fixed"
         sx={(theme) => ({
@@ -58,9 +64,18 @@ export default function PrimarySearchAppBar({
           </Typography>
           <SearchBar treeData={treeData} onSelectNode={onSelectNode} />
           <Box sx={{ flexGrow: 1 }} />
+          <IconButton
+            size="large"
+            color="inherit"
+            aria-label="go to file explorer"
+            sx={{ mr: 1 }}
+            onClick={handleHomeClick}
+          >
+            <HomeOutlinedIcon />
+          </IconButton>
           <ProfileButton />
         </Toolbar>
       </MuiAppBar>
-    </Box>
+    </>
   );
 }

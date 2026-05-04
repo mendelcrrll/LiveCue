@@ -68,15 +68,26 @@ class PresentationRepository:
                 enrichment.time_per_slide_seconds if enrichment is not None else None
             )
             slide.raw_page = slide_payload.model_dump(mode="python")
+            updated_slides.append(slide)
+
+        presentation.slides = updated_slides
+        self.session.flush()
+
+        for slide in updated_slides:
+            slide.priority_items.clear()
+            slide.pain_points.clear()
+
+        self.session.flush()
+
+        for slide in updated_slides:
+            enrichment = enrichment_map.get(slide.google_object_id)
             slide.priority_items = _build_priority_items(
                 enrichment.priority_queue if enrichment is not None else []
             )
             slide.pain_points = _build_pain_points(
                 enrichment.pain_points if enrichment is not None else []
             )
-            updated_slides.append(slide)
 
-        presentation.slides = updated_slides
         self.session.flush()
         return presentation
 
