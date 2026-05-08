@@ -49,27 +49,15 @@ function SlideNavigator({ slides = [], activeSlideId = null, onSelectSlide }) {
                 <Stack spacing={1}>
                   <SlidePreview slide={slide} borderRadius={1.5} />
 
-                  <Stack spacing={0.25}>
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        color: 'var(--text-muted)',
-                        fontWeight: 700,
-                      }}
-                    >
-                      Slide {slide.slideNumber}
-                    </Typography>
-
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: 'var(--text-h)',
-                        fontWeight: isActive ? 700 : 500,
-                      }}
-                    >
-                      {slide.title || 'Untitled slide'}
-                    </Typography>
-                  </Stack>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: 'var(--text-h)',
+                      fontWeight: isActive ? 700 : 500,
+                    }}
+                  >
+                    {slide.title || `Slide ${slide.slideNumber}`}
+                  </Typography>
                 </Stack>
               </Paper>
             </ButtonBase>

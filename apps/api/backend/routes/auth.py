@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import secrets
 import time
 from dataclasses import dataclass
@@ -45,6 +47,47 @@ GOOGLE_CREDENTIALS_BY_USER_ID: dict[str, StoredGoogleCredentials] = {}
 SESSIONS_BY_ID: dict[str, StoredSession] = {}
 
 
+def get_google_credentials_for_session(
+    session_id: str | None,
+) -> StoredGoogleCredentials | None:
+    if not session_id:
+        return None
+
+    session = SESSIONS_BY_ID.get(session_id)
+    if session is None:
+        return None
+
+    return GOOGLE_CREDENTIALS_BY_USER_ID.get(session.user_id)
+
+
+@router.get("/session")
+def get_auth_session(
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
+    credentials = get_google_credentials_for_session(session_id)
+
+    if credentials is None:
+        return {
+            "isAuthenticated": False,
+            "userName": "Guest",
+            "email": None,
+        }
+
+    id_token_payload = _decode_id_token_payload(credentials.id_token)
+    email = id_token_payload.get("email") if id_token_payload else None
+    user_name = (
+        id_token_payload.get("name")
+        if id_token_payload
+        else None
+    ) or email or "Google connected"
+
+    return {
+        "isAuthenticated": True,
+        "userName": user_name,
+        "email": email,
+    }
+
+
 def _is_secure_cookie() -> bool:
     settings = get_settings()
     env = str(getattr(settings, "environment", "")).lower()
@@ -60,6 +103,19 @@ def _cookie_samesite() -> str:
     settings = get_settings()
     configured = getattr(settings, "cookie_samesite", None)
     return configured or "lax"
+
+
+def _decode_id_token_payload(id_token: str | None) -> dict:
+    if not id_token:
+        return {}
+
+    try:
+        payload_segment = id_token.split(".")[1]
+        padded_payload = payload_segment + "=" * (-len(payload_segment) % 4)
+        decoded_payload = base64.urlsafe_b64decode(padded_payload.encode("utf-8"))
+        return json.loads(decoded_payload)
+    except (IndexError, ValueError, json.JSONDecodeError):
+        return {}
 
 
 async def persist_google_credentials(*, tokens: GoogleTokenResponse) -> str:

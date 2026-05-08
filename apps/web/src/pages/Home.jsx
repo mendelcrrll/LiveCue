@@ -15,6 +15,7 @@ import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
 import SlideshowOutlinedIcon from '@mui/icons-material/SlideshowOutlined';
 import ButtonAppBar from '../components/AppBar';
 import SideBar from '../components/SideBar';
+import SlidePreview from '../components/SlidePreview';
 import WorkflowActionButtons from '../components/WorkflowActionButtons';
 import WorkflowRequestDialog from '../components/WorkflowRequestDialog';
 import { findNodeById } from '../data/presentationTree';
@@ -73,6 +74,21 @@ function Home() {
   useEffect(() => {
     loadPresentationTree();
   }, [loadPresentationTree]);
+
+  useEffect(() => {
+    if (!actionFeedback && !actionError) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setActionFeedback('');
+      setActionError('');
+    }, 10000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [actionFeedback, actionError]);
 
   const selectedContext =
     findNodeById(treeData, selectedNodeId) ??
@@ -264,14 +280,13 @@ function Home() {
   const breadcrumb = selectedContext.path.map((node) => node.name).join(' / ');
   const activeFolder = selectedNode.type === 'folder' ? selectedNode : selectedParent;
   const visibleItems = activeFolder?.children ?? [];
-  const selectedFile = selectedNode.type === 'file' ? selectedNode : null;
-
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
       <ButtonAppBar
         drawerWidth={DRAWER_WIDTH}
         sidebarOpen={sidebarOpen}
         onMenuClick={() => setSidebarOpen((open) => !open)}
+        backDisabled
         onSelectNode={setSelectedNodeId}
         treeData={treeData}
         canCreate={canCreate}
@@ -288,6 +303,32 @@ function Home() {
         selectedNodeId={selectedNode.id}
         onSelectNode={setSelectedNodeId}
       />
+      {(actionFeedback || actionError) && (
+        <Alert
+          severity={actionError ? 'error' : 'success'}
+          onClose={() => {
+            setActionFeedback('');
+            setActionError('');
+          }}
+          sx={{
+            position: 'fixed',
+            right: 20,
+            bottom: 20,
+            zIndex: 1500,
+            width: 'min(420px, calc(100vw - 32px))',
+            backgroundColor: 'rgba(255, 255, 255, 0.72)',
+            color: 'var(--text-h)',
+            border: '1px solid rgba(203, 191, 218, 0.72)',
+            boxShadow: '0 14px 36px rgba(25, 18, 35, 0.18)',
+            backdropFilter: 'blur(12px)',
+            '& .MuiAlert-icon': {
+              color: actionError ? 'error.main' : 'success.main',
+            },
+          }}
+        >
+          {actionError || actionFeedback}
+        </Alert>
+      )}
       <Box
         component="main"
         sx={(theme) => ({
@@ -304,18 +345,6 @@ function Home() {
       >
         <Toolbar />
         <Stack spacing={3} sx={{ mt: 3 }}>
-          {(actionFeedback || actionError) && (
-            <Alert
-              severity={actionError ? 'error' : 'success'}
-              onClose={() => {
-                setActionFeedback('');
-                setActionError('');
-              }}
-            >
-              {actionError || actionFeedback}
-            </Alert>
-          )}
-
           <Stack
             direction="row"
             spacing={2}
@@ -351,82 +380,16 @@ function Home() {
             </Box>
           </Stack>
 
-          {selectedFile && (
-            <Paper
-              elevation={0}
-              sx={{
-                border: '1px solid var(--border, #e5e4e7)',
-                borderRadius: 2,
-                p: { xs: 2, md: 3 },
-                backgroundColor: 'var(--surface-raised, #ffffff)',
-              }}
-            >
-              <Stack
-                direction={{ xs: 'column', md: 'row' }}
-                spacing={3}
-                alignItems={{ xs: 'stretch', md: 'center' }}
-              >
-                <Box
-                  sx={{
-                    width: { xs: '100%', md: 340 },
-                    aspectRatio: '16 / 9',
-                    borderRadius: 1.5,
-                    border: '1px solid var(--border, #e5e4e7)',
-                    backgroundColor: 'var(--surface, #f7f4fb)',
-                    display: 'grid',
-                    placeItems: 'center',
-                  }}
-                >
-                  <Stack spacing={1} alignItems="center">
-                    <SlideshowOutlinedIcon sx={{ fontSize: 56, color: 'var(--primary)' }} />
-                    <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                      Presentation preview
-                    </Typography>
-                  </Stack>
-                </Box>
-
-                <Stack spacing={1.5} sx={{ minWidth: 0, textAlign: 'left', flex: 1 }}>
-                  <Chip
-                    icon={<SlideshowOutlinedIcon />}
-                    label={selectedFile.presentationId ? 'Linked presentation' : 'File'}
-                    sx={{
-                      alignSelf: 'flex-start',
-                      color: 'var(--interactive-text)',
-                      backgroundColor: 'var(--interactive-bg)',
-                      fontWeight: 700,
-                    }}
-                  />
-                  <Typography variant="h5" sx={{ color: 'var(--text-h)' }}>
-                    {selectedFile.name}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                    {selectedFile.presentationId
-                      ? 'Launch this deck in the builder schema workspace to configure slide goals, timing, and accessibility checks.'
-                      : 'This file is not linked to a presentation yet.'}
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<LaunchOutlinedIcon />}
-                    disabled={!selectedFile.presentationId}
-                    onClick={() => openBuilderSchema(selectedFile)}
-                    sx={{ alignSelf: 'flex-start' }}
-                  >
-                    Edit
-                  </Button>
-                </Stack>
-              </Stack>
-            </Paper>
-          )}
-
           <Box
             sx={{
               display: 'grid',
               gap: 2.5,
               gridTemplateColumns: {
                 xs: '1fr',
-                sm: 'repeat(2, minmax(0, 1fr))',
-                xl: 'repeat(3, minmax(260px, 1fr))',
+                sm: 'repeat(2, minmax(0, 0.58fr))',
+                xl: 'repeat(3, minmax(150px, 0.58fr))',
               },
+              justifyContent: 'start',
             }}
           >
             {visibleItems.map((item) => {
@@ -464,21 +427,36 @@ function Home() {
                         : 'var(--surface, #f7f4fb)',
                       display: 'grid',
                       placeItems: 'center',
+                      overflow: 'hidden',
                     }}
                   >
-                    <Stack spacing={1} alignItems="center">
-                      {isFolder ? (
-                        <FolderOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
-                      ) : (
-                        <SlideshowOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
-                      )}
-                      <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                        {isFolder ? `${item.children.length} items` : 'Preview'}
-                      </Typography>
-                    </Stack>
+                    {!isFolder && item.thumbnailUrl ? (
+                      <SlidePreview
+                        slide={{
+                          slideNumber: 1,
+                          thumbnailUrl: item.thumbnailUrl,
+                        }}
+                        borderRadius={0}
+                        sx={{
+                          border: 0,
+                          borderRadius: 0,
+                        }}
+                      />
+                    ) : (
+                      <Stack spacing={1} alignItems="center">
+                        {isFolder ? (
+                          <FolderOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
+                        ) : (
+                          <SlideshowOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
+                        )}
+                        <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+                          {isFolder ? `${item.children.length} items` : 'Preview'}
+                        </Typography>
+                      </Stack>
+                    )}
                   </Box>
 
-                  <Stack spacing={1.5} sx={{ p: 2, textAlign: 'left' }}>
+                  <Stack spacing={0.85} sx={{ p: 1.1, textAlign: 'left' }}>
                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
                       <Chip
                         size="small"
@@ -495,9 +473,39 @@ function Home() {
                       </Typography>
                     </Stack>
 
-                    <Typography variant="h6" sx={{ color: 'var(--text-h)' }}>
+                    <Typography variant="body1" sx={{ color: 'var(--text-h)', fontWeight: 700 }}>
                       {item.name}
                     </Typography>
+
+                    {isSelected && !isFolder && (
+                      <Box
+                        sx={{
+                          pt: 1.25,
+                          mt: 0.25,
+                          borderTop: '1px solid var(--border, #e5e4e7)',
+                        }}
+                      >
+                        <Stack spacing={1.25}>
+                          <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+                            {item.presentationId
+                              ? 'Open this deck in BuilderSchema to configure slide goals, timing, and accessibility checks.'
+                              : 'This file is not linked to a presentation yet.'}
+                          </Typography>
+                          <Button
+                            variant="contained"
+                            startIcon={<LaunchOutlinedIcon />}
+                            disabled={!item.presentationId}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openBuilderSchema(item);
+                            }}
+                            sx={{ alignSelf: 'flex-start' }}
+                          >
+                            Edit
+                          </Button>
+                        </Stack>
+                      </Box>
+                    )}
 
                     {isFolder && (
                       <Button

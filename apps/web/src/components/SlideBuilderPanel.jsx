@@ -1,5 +1,3 @@
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -80,57 +78,6 @@ function SlideBuilderPanel({ slide, onUpdateSlide }) {
 
   return (
     <Stack spacing={2.5} sx={builderPanelControlSx}>
-      <Paper
-        elevation={0}
-        sx={{
-          p: 3,
-          border: '1px solid var(--border, #e5e4e7)',
-          backgroundColor: 'var(--surface-raised, #ffffff)',
-        }}
-      >
-        <Stack spacing={1.5}>
-          <Typography variant="overline" sx={{ color: 'var(--text-muted)', fontWeight: 700 }}>
-            Slide {slide.slideNumber}
-          </Typography>
-
-          <Typography variant="h4" sx={{ color: 'var(--text-h)' }}>
-            {slide.title || 'Untitled slide'}
-          </Typography>
-
-          <Divider />
-
-          <Box>
-            <Typography variant="h6" sx={{ color: 'var(--text-h)', mb: 1 }}>
-              Slide Text
-            </Typography>
-
-            <Stack spacing={0.75}>
-              {(slide.slideText ?? []).map((text, index) => (
-                <Typography key={`${text}-${index}`} variant="body2" sx={{ color: 'var(--text)' }}>
-                  {text}
-                </Typography>
-              ))}
-            </Stack>
-          </Box>
-
-          <Box>
-            <Typography variant="h6" sx={{ color: 'var(--text-h)', mb: 1 }}>
-              Speaker Notes
-            </Typography>
-
-            <Typography
-              variant="body2"
-              sx={{
-                color: 'var(--text)',
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {slide.speakerNotes || 'No speaker notes for this slide.'}
-            </Typography>
-          </Box>
-        </Stack>
-      </Paper>
-
       <Paper
         elevation={0}
         sx={{

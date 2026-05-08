@@ -122,11 +122,18 @@ def _next_sort_order(session: Session, parent_id: UUID) -> int:
 
 
 def _serialize_node(node: WorkflowNode) -> dict[str, Any]:
+    thumbnail_url = None
+    if node.presentation is not None and node.presentation.slides:
+        first_slide = node.presentation.slides[0]
+        raw_page = first_slide.raw_page or {}
+        thumbnail_url = raw_page.get("thumbnailUrl") or raw_page.get("imageUrl")
+
     return {
         "id": str(node.id),
         "type": node.node_type,
         "name": node.name,
         "presentationId": str(node.presentation_id) if node.presentation_id is not None else None,
+        "thumbnailUrl": thumbnail_url,
         "sourceKind": node.source_kind,
         "googlePresentationId": node.google_presentation_id,
         "children": [],

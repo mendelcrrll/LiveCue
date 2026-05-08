@@ -41,7 +41,7 @@ function PresenterSlidePanel({
           height: '100%',
           minHeight: 0,
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr) minmax(0, 118px)',
+          gridTemplateRows: 'auto minmax(0, 1fr) 124px',
           gap: 1.5,
           overflow: 'hidden',
         }}
@@ -101,9 +101,14 @@ function PresenterSlidePanel({
           slide={slide}
           size="large"
           sx={{
+            alignSelf: 'center',
+            justifySelf: 'center',
             height: '100%',
+            width: 'auto',
+            maxHeight: '100%',
+            maxWidth: '100%',
             minHeight: 0,
-            aspectRatio: 'auto',
+            aspectRatio: '16 / 9',
           }}
         />
 
@@ -175,14 +180,20 @@ function AdjacentSlideButton({ label, slide, onClick }) {
             height: '100%',
             minHeight: 0,
             display: 'grid',
-            gridTemplateRows: 'auto minmax(0, 1fr)',
-            gap: 0.5,
+            gridTemplateColumns: '56px minmax(0, 1fr)',
+            alignItems: 'stretch',
+            gap: 0.75,
           }}
         >
           <Typography
             variant="caption"
             noWrap
-            sx={{ color: 'var(--text-muted)', fontWeight: 800, minWidth: 0 }}
+            sx={{
+              color: 'var(--text-muted)',
+              fontWeight: 800,
+              minWidth: 0,
+              alignSelf: 'center',
+            }}
           >
             {label}
           </Typography>
@@ -193,7 +204,7 @@ function AdjacentSlideButton({ label, slide, onClick }) {
               sx={{
                 height: '100%',
                 minHeight: 0,
-                aspectRatio: 'auto',
+                aspectRatio: '16 / 9',
               }}
             />
           ) : (
