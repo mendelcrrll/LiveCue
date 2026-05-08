@@ -9,6 +9,7 @@ function SlidePreview({
   size = 'small',
   borderRadius = 1,
   emptyLabel = 'No preview',
+  onImageError,
   sx,
 }) {
   const slideImage = getSlidePreviewImage(slide);
@@ -33,6 +34,7 @@ function SlidePreview({
           component="img"
           src={slideImage}
           alt={`Slide ${slide.slideNumber}`}
+          onError={onImageError}
           sx={{
             width: '100%',
             height: '100%',

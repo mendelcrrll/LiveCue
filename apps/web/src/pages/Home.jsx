@@ -12,15 +12,16 @@ import Typography from '@mui/material/Typography';
 import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutlined';
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import SlideshowOutlinedIcon from '@mui/icons-material/SlideshowOutlined';
 import ButtonAppBar from '../components/AppBar';
 import SideBar from '../components/SideBar';
-import SlidePreview from '../components/SlidePreview';
 import SlidePreview from '../components/SlidePreview';
 import WorkflowActionButtons from '../components/WorkflowActionButtons';
 import WorkflowRequestDialog from '../components/WorkflowRequestDialog';
 import { findNodeById } from '../data/presentationTree';
 import PresentationWorkflowService from '../services/PresentationWorkflowService';
+import { requestJson } from '../services/apiClient';
 
 const DRAWER_WIDTH = 320;
 
@@ -48,6 +49,9 @@ function Home() {
   const [submittingAction, setSubmittingAction] = useState(false);
   const [actionFeedback, setActionFeedback] = useState('');
   const [actionError, setActionError] = useState('');
+  const [authState, setAuthState] = useState({
+    isAuthenticated: false,
+  });
 
   const loadPresentationTree = useCallback(async (preferredNodeId = null) => {
     try {
@@ -75,6 +79,34 @@ function Home() {
   useEffect(() => {
     loadPresentationTree();
   }, [loadPresentationTree]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadAuthState() {
+      try {
+        const session = await requestJson('/api/auth/session');
+
+        if (isActive) {
+          setAuthState({
+            isAuthenticated: Boolean(session.isAuthenticated),
+          });
+        }
+      } catch {
+        if (isActive) {
+          setAuthState({
+            isAuthenticated: false,
+          });
+        }
+      }
+    }
+
+    loadAuthState();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!actionFeedback && !actionError) {
@@ -171,6 +203,11 @@ function Home() {
   }
 
   function openWorkflowItem(item) {
+    if (isLockedPresentation(item)) {
+      promptGoogleSignIn();
+      return;
+    }
+
     setSelectedNodeId(item.id);
   }
 
@@ -179,7 +216,53 @@ function Home() {
       return;
     }
 
+    if (isLockedPresentation(item)) {
+      promptGoogleSignIn();
+      return;
+    }
+
     navigate(`/builder/${item.presentationId}`);
+  }
+
+  function isLockedPresentation(item) {
+    return Boolean(item?.presentationId && !authState.isAuthenticated);
+  }
+
+  function promptGoogleSignIn() {
+    setActionFeedback('');
+    setActionError('Connect Google to load slide imagery and use imported presentations.');
+  }
+
+  function handleGoogleConnect() {
+    window.location.assign('http://127.0.0.1:8000/api/auth/google/login');
+  }
+
+  async function refreshCardThumbnail(event, item) {
+    const imageElement = event.currentTarget;
+
+    if (
+      imageElement.dataset.thumbnailRefreshAttempted ||
+      !authState.isAuthenticated ||
+      !item.presentationId ||
+      !item.firstSlideId
+    ) {
+      return;
+    }
+
+    imageElement.dataset.thumbnailRefreshAttempted = 'true';
+
+    try {
+      const payload = await PresentationWorkflowService.refreshSlideThumbnail(
+        item.presentationId,
+        item.firstSlideId
+      );
+
+      if (payload.thumbnailUrl) {
+        imageElement.src = payload.thumbnailUrl;
+      }
+    } catch {
+      imageElement.style.display = 'none';
+    }
   }
 
   if (loading) {
@@ -307,6 +390,13 @@ function Home() {
       {(actionFeedback || actionError) && (
         <Alert
           severity={actionError ? 'error' : 'success'}
+          action={
+            actionError.includes('Connect Google') ? (
+              <Button color="inherit" size="small" onClick={handleGoogleConnect}>
+                Sign in
+              </Button>
+            ) : null
+          }
           onClose={() => {
             setActionFeedback('');
             setActionError('');
@@ -381,84 +471,6 @@ function Home() {
             </Box>
           </Stack>
 
-          {selectedFile && (
-            <Paper
-              elevation={0}
-              sx={{
-                border: '1px solid var(--border, #e5e4e7)',
-                borderRadius: 2,
-                p: { xs: 2, md: 3 },
-                backgroundColor: 'var(--surface-raised, #ffffff)',
-              }}
-            >
-              <Stack
-                direction={{ xs: 'column', md: 'row' }}
-                spacing={3}
-                alignItems={{ xs: 'stretch', md: 'center' }}
-              >
-                <Box
-                  sx={{
-                    width: { xs: '100%', md: 340 },
-                    aspectRatio: '16 / 9',
-                    borderRadius: 1.5,
-                    border: '1px solid var(--border, #e5e4e7)',
-                    backgroundColor: 'var(--surface, #f7f4fb)',
-                    display: 'grid',
-                    placeItems: 'center',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {selectedFile.thumbnailUrl ? (
-                    <SlidePreview
-                      slide={{
-                        slideNumber: 1,
-                        thumbnailUrl: selectedFile.thumbnailUrl,
-                      }}
-                      borderRadius={1.5}
-                    />
-                  ) : (
-                    <Stack spacing={1} alignItems="center">
-                      <SlideshowOutlinedIcon sx={{ fontSize: 56, color: 'var(--primary)' }} />
-                      <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                        Presentation preview
-                      </Typography>
-                    </Stack>
-                  )}
-                </Box>
-
-                <Stack spacing={1.5} sx={{ minWidth: 0, textAlign: 'left', flex: 1 }}>
-                  <Chip
-                    icon={<SlideshowOutlinedIcon />}
-                    label={selectedFile.presentationId ? 'Linked presentation' : 'File'}
-                    sx={{
-                      alignSelf: 'flex-start',
-                      color: 'var(--interactive-text)',
-                      backgroundColor: 'var(--interactive-bg)',
-                      fontWeight: 700,
-                    }}
-                  />
-                  <Typography variant="h5" sx={{ color: 'var(--text-h)' }}>
-                    {selectedFile.name}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                    {selectedFile.presentationId
-                      ? 'Launch this deck in the builder schema workspace to configure slide goals, timing, and accessibility checks.'
-                      : 'This file is not linked to a presentation yet.'}
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<LaunchOutlinedIcon />}
-                    disabled={!selectedFile.presentationId}
-                    onClick={() => openBuilderSchema(selectedFile)}
-                    sx={{ alignSelf: 'flex-start' }}
-                  >
-                    Edit
-                  </Button>
-                </Stack>
-              </Stack>
-            </Paper>
-          )}
-
           <Box
             sx={{
               display: 'grid',
@@ -474,6 +486,7 @@ function Home() {
             {visibleItems.map((item) => {
               const isSelected = item.id === selectedNode.id;
               const isFolder = item.type === 'folder';
+              const isLocked = isLockedPresentation(item);
 
               return (
                 <Paper
@@ -483,7 +496,8 @@ function Home() {
                   sx={{
                     overflow: 'hidden',
                     borderRadius: 2,
-                    cursor: 'pointer',
+                    cursor: isLocked ? 'not-allowed' : 'pointer',
+                    opacity: isLocked ? 0.68 : 1,
                     border: isSelected
                       ? '2px solid var(--primary, #492e7d)'
                       : '1px solid var(--border, #e5e4e7)',
@@ -492,7 +506,7 @@ function Home() {
                       : 'var(--surface-raised, #ffffff)',
                     transition: 'transform 180ms ease, border-color 180ms ease',
                     '&:hover': {
-                      transform: 'translateY(-2px)',
+                      transform: isLocked ? 'none' : 'translateY(-2px)',
                       borderColor: 'var(--primary, #492e7d)',
                     },
                   }}
@@ -507,14 +521,16 @@ function Home() {
                       display: 'grid',
                       placeItems: 'center',
                       overflow: 'hidden',
+                      position: 'relative',
                     }}
                   >
-                    {!isFolder && item.thumbnailUrl ? (
+                    {!isFolder && item.thumbnailUrl && !isLocked ? (
                       <SlidePreview
                         slide={{
                           slideNumber: 1,
                           thumbnailUrl: item.thumbnailUrl,
                         }}
+                        onImageError={(event) => refreshCardThumbnail(event, item)}
                         borderRadius={0}
                         sx={{
                           border: 0,
@@ -523,13 +539,15 @@ function Home() {
                       />
                     ) : (
                     <Stack spacing={1} alignItems="center">
-                      {isFolder ? (
+                      {isLocked ? (
+                        <LockOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
+                      ) : isFolder ? (
                         <FolderOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
                       ) : (
                         <SlideshowOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
                       )}
                       <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                        {isFolder ? `${item.children.length} items` : 'Preview'}
+                        {isLocked ? 'Sign in required' : isFolder ? `${item.children.length} items` : 'Preview'}
                       </Typography>
                     </Stack>
                     )}
@@ -566,21 +584,27 @@ function Home() {
                       >
                         <Stack spacing={1.25}>
                           <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                            {item.presentationId
+                            {isLocked
+                              ? 'Connect Google to load slide imagery and open this presentation.'
+                              : item.presentationId
                               ? 'Open this deck in BuilderSchema to configure slide goals, timing, and accessibility checks.'
                               : 'This file is not linked to a presentation yet.'}
                           </Typography>
                           <Button
                             variant="contained"
-                            startIcon={<LaunchOutlinedIcon />}
+                            startIcon={isLocked ? <LockOutlinedIcon /> : <LaunchOutlinedIcon />}
                             disabled={!item.presentationId}
                             onClick={(event) => {
                               event.stopPropagation();
-                              openBuilderSchema(item);
+                              if (isLocked) {
+                                promptGoogleSignIn();
+                              } else {
+                                openBuilderSchema(item);
+                              }
                             }}
                             sx={{ alignSelf: 'flex-start' }}
                           >
-                            Edit
+                            {isLocked ? 'Sign in' : 'Edit'}
                           </Button>
                         </Stack>
                       </Box>

@@ -32,9 +32,14 @@ async function deleteNode(nodeId) {
   });
 }
 
+async function refreshSlideThumbnail(presentationId, slideId) {
+  return requestJson(`/api/presentations/${presentationId}/slides/${slideId}/thumbnail`);
+}
+
 export default {
   createFile,
   createFolder,
   deleteNode,
   getPresentationTree,
+  refreshSlideThumbnail,
 };

@@ -1,20 +1,21 @@
+import time
 from uuid import UUID
 
 import httpx
-import httpx
 from fastapi import APIRouter, Cookie, HTTPException, Response, status
 
+from backend.auth.google_auth import GoogleAuthService
 from backend.database import get_session
 from backend.google.presentation_import import import_google_slides_presentation
 from backend.google.slides_client import GoogleSlidesClient
 from backend.persistence.models import Presentation, PresentationSlide, SlidePriorityItem
-from backend.routes.auth import get_google_credentials_for_session
 from backend.persistence.workflow_tree import (
     create_workflow_file,
     create_workflow_folder,
     delete_workflow_node,
     get_workflow_tree,
 )
+from backend.routes.auth import GOOGLE_CREDENTIALS_BY_USER_ID, get_google_credentials_for_session
 from backend.schemas.presentations import (
     BuilderAccessibilityCheck,
     BuilderPriorityItem,
@@ -59,6 +60,56 @@ def get_builder_schema(presentation_id: UUID):
             raise HTTPException(status_code=404, detail="Presentation not found.")
 
         return _to_builder_response(presentation)
+    finally:
+        session.close()
+
+
+@router.get("/{presentation_id}/slides/{slide_id}/thumbnail")
+async def refresh_slide_thumbnail(
+    presentation_id: UUID,
+    slide_id: UUID,
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
+    credentials = get_google_credentials_for_session(session_id)
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Connect Google to refresh presentation thumbnails.",
+        )
+
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        slide = session.get(PresentationSlide, slide_id)
+        if slide is None or slide.presentation_id != presentation_id:
+            raise HTTPException(status_code=404, detail="Slide not found.")
+
+        thumbnail_payload = await _fetch_thumbnail_with_refresh(
+            credentials=credentials,
+            presentation=presentation,
+            slide=slide,
+        )
+        thumbnail_url = thumbnail_payload.get("contentUrl")
+        if not thumbnail_url:
+            raise HTTPException(status_code=502, detail="Google did not return a thumbnail URL.")
+
+        raw_page = dict(slide.raw_page or {})
+        raw_page["thumbnailUrl"] = thumbnail_url
+        raw_page.setdefault("imageUrl", thumbnail_url)
+        slide.raw_page = raw_page
+        session.commit()
+
+        return {"thumbnailUrl": thumbnail_url}
+    except HTTPException:
+        session.rollback()
+        raise
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
     finally:
         session.close()
 
@@ -225,6 +276,41 @@ def _google_api_exception(exc: httpx.HTTPStatusError) -> HTTPException:
         detail = exc.response.text
 
     return HTTPException(status_code=exc.response.status_code, detail=detail)
+
+
+async def _fetch_thumbnail_with_refresh(
+    *,
+    credentials,
+    presentation: Presentation,
+    slide: PresentationSlide,
+) -> dict:
+    client = GoogleSlidesClient(access_token=credentials.access_token)
+
+    try:
+        return await client.fetch_slide_thumbnail(
+            presentation_id=presentation.google_presentation_id,
+            slide_object_id=slide.google_object_id,
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 401 or not credentials.refresh_token:
+            raise
+
+        refreshed = await GoogleAuthService().refresh_access_token(
+            refresh_token=credentials.refresh_token,
+        )
+        credentials.access_token = refreshed.access_token
+        credentials.refresh_token = refreshed.refresh_token or credentials.refresh_token
+        credentials.expires_at = int(time.time()) + max(refreshed.expires_in, 0)
+        credentials.scope = refreshed.scope
+        credentials.token_type = refreshed.token_type
+        credentials.id_token = refreshed.id_token or credentials.id_token
+        GOOGLE_CREDENTIALS_BY_USER_ID[credentials.user_id] = credentials
+
+        client = GoogleSlidesClient(access_token=credentials.access_token)
+        return await client.fetch_slide_thumbnail(
+            presentation_id=presentation.google_presentation_id,
+            slide_object_id=slide.google_object_id,
+        )
 
 
 def _to_builder_response(presentation: Presentation) -> PresentationBuilderData:

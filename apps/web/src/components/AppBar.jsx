@@ -7,7 +7,6 @@ import Typography from '@mui/material/Typography';
 import ArrowBackOutlinedIcon from '@mui/icons-material/ArrowBackOutlined';
 import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { requestJson } from '../services/apiClient';
 import SearchBar from './SearchBar';
@@ -28,6 +27,7 @@ export default function PrimarySearchAppBar({
     isAuthenticated: false,
     userName: 'Guest',
   });
+  const handleBackClick = onBackClick ?? (() => navigate(-1));
   const handleHomeClick = onHomeClick ?? (() => navigate('/'));
   const handleGoogleConnect = () => {
     window.location.assign('http://127.0.0.1:8000/api/auth/google/login');
