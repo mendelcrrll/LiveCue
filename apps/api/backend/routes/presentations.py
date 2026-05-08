@@ -1,6 +1,7 @@
 from uuid import UUID
 
 import httpx
+import httpx
 from fastapi import APIRouter, Cookie, HTTPException, Response, status
 
 from backend.database import get_session
@@ -86,6 +87,9 @@ def update_builder_slide(
     except HTTPException:
         session.rollback()
         raise
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -41,7 +41,7 @@ function PresenterSlidePanel({
           height: '100%',
           minHeight: 0,
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr) 124px',
+          gridTemplateRows: 'auto minmax(0, 1fr) minmax(96px, 0.32fr)',
           gap: 1.5,
           overflow: 'hidden',
         }}

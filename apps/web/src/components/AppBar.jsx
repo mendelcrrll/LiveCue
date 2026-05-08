@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import MuiAppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Toolbar from '@mui/material/Toolbar';
@@ -8,7 +9,7 @@ import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../services/apiClient';
+import { requestJson } from '../services/apiClient';
 import SearchBar from './SearchBar';
 import ProfileButton from './ProfileButton';
 
@@ -23,49 +24,44 @@ export default function PrimarySearchAppBar({
   treeData,
 }) {
   const navigate = useNavigate();
-  const [session, setSession] = useState({
+  const [authState, setAuthState] = useState({
     isAuthenticated: false,
     userName: 'Guest',
   });
-  const handleBackClick = onBackClick ?? (() => navigate(-1));
   const handleHomeClick = onHomeClick ?? (() => navigate('/'));
+  const handleGoogleConnect = () => {
+    window.location.assign('http://127.0.0.1:8000/api/auth/google/login');
+  };
 
   useEffect(() => {
-    let isMounted = true;
+    let isActive = true;
 
-    async function loadSession() {
+    async function loadAuthState() {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/session`, {
-          credentials: 'include',
-        });
+        const session = await requestJson('http://127.0.0.1:8000/api/auth/session');
 
-        if (!response.ok) {
-          return;
-        }
-
-        const nextSession = await response.json();
-
-        if (isMounted) {
-          setSession({
-            isAuthenticated: Boolean(nextSession.isAuthenticated),
-            userName: nextSession.userName || 'Guest',
+        if (isActive) {
+          setAuthState({
+            isAuthenticated: Boolean(session.isAuthenticated),
+            userName: session.userName || 'Guest',
           });
         }
       } catch {
-        // Leave the profile as Guest when the API is unavailable.
+        if (isActive) {
+          setAuthState({
+            isAuthenticated: false,
+            userName: 'Guest',
+          });
+        }
       }
     }
 
-    loadSession();
+    loadAuthState();
 
     return () => {
-      isMounted = false;
+      isActive = false;
     };
   }, []);
-
-  function handleGoogleConnect() {
-    window.location.href = `${API_BASE_URL}/api/auth/google/login`;
-  }
 
   return (
     <>
@@ -131,8 +127,8 @@ export default function PrimarySearchAppBar({
             <HomeOutlinedIcon />
           </IconButton>
           <ProfileButton
-            userName={session.userName}
-            isAuthenticated={session.isAuthenticated}
+            isAuthenticated={authState.isAuthenticated}
+            userName={authState.userName}
             onGoogleConnect={handleGoogleConnect}
           />
         </Toolbar>

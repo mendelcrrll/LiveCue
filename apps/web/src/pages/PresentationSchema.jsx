@@ -285,6 +285,54 @@ function PresentationSchemaPage() {
     };
   }, [previousSlide, nextSlide, searchParams, activeDeckId, setSearchParams]);
 
+  useEffect(() => {
+    if (!deckId || isSlideOnlyMode) {
+      return undefined;
+    }
+
+    function requestSlideOnlyTabClose() {
+      writeSlideOnlyCommandToStorage(deckId, {
+        type: 'close',
+        createdAt: Date.now(),
+      });
+    }
+
+    window.addEventListener('beforeunload', requestSlideOnlyTabClose);
+
+    return () => {
+      window.removeEventListener('beforeunload', requestSlideOnlyTabClose);
+      requestSlideOnlyTabClose();
+    };
+  }, [deckId, isSlideOnlyMode]);
+
+  useEffect(() => {
+    if (!deckId || !isSlideOnlyMode) {
+      return undefined;
+    }
+
+    function handleStorage(event) {
+      if (event.key !== getSlideOnlyCommandStorageKey(deckId) || !event.newValue) {
+        return;
+      }
+
+      try {
+        const command = JSON.parse(event.newValue);
+
+        if (command.type === 'close') {
+          window.close();
+        }
+      } catch {
+        // Ignore malformed storage events from older tabs.
+      }
+    }
+
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [deckId, isSlideOnlyMode]);
+
   function handleSelectSlide(nextSlideId) {
     if (!nextSlideId) {
       return;

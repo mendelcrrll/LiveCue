@@ -25,6 +25,31 @@ def debug_session(
         "credential_count": len(GOOGLE_CREDENTIALS_BY_USER_ID),
     }
 
+
+@router.get("/session")
+def get_session_status(
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
+    credentials = get_google_credentials_for_session(session_id)
+
+    if credentials is None:
+        return {
+            "isAuthenticated": False,
+            "userName": "Guest",
+            "email": None,
+        }
+
+    profile = _decode_google_id_token(credentials.id_token)
+    email = profile.get("email")
+    user_name = profile.get("name") or email or "Google connected"
+
+    return {
+        "isAuthenticated": True,
+        "userName": user_name,
+        "email": email,
+    }
+
+
 @dataclass(slots=True)
 class StoredGoogleCredentials:
     user_id: str
@@ -45,6 +70,62 @@ class StoredSession:
 
 GOOGLE_CREDENTIALS_BY_USER_ID: dict[str, StoredGoogleCredentials] = {}
 SESSIONS_BY_ID: dict[str, StoredSession] = {}
+OAUTH_STATES_BY_VALUE: dict[str, int] = {}
+
+
+def get_google_credentials_for_session(
+    session_id: str | None,
+) -> StoredGoogleCredentials | None:
+    if not session_id:
+        return None
+
+    session = SESSIONS_BY_ID.get(session_id)
+    if session is None:
+        return None
+
+    return GOOGLE_CREDENTIALS_BY_USER_ID.get(session.user_id)
+
+
+def _store_oauth_state(state_value: str) -> None:
+    _remove_expired_oauth_states()
+    OAUTH_STATES_BY_VALUE[state_value] = int(time.time()) + 10 * 60
+
+
+def _consume_oauth_state(state_value: str) -> bool:
+    _remove_expired_oauth_states()
+    expires_at = OAUTH_STATES_BY_VALUE.pop(state_value, None)
+
+    return expires_at is not None and expires_at >= int(time.time())
+
+
+def _remove_expired_oauth_states() -> None:
+    now = int(time.time())
+    expired_states = [
+        state_value
+        for state_value, expires_at in OAUTH_STATES_BY_VALUE.items()
+        if expires_at < now
+    ]
+
+    for state_value in expired_states:
+        OAUTH_STATES_BY_VALUE.pop(state_value, None)
+
+
+def _decode_google_id_token(id_token: str | None) -> dict[str, str]:
+    if not id_token:
+        return {}
+
+    try:
+        payload_segment = id_token.split(".")[1]
+        padded_payload = payload_segment + "=" * (-len(payload_segment) % 4)
+        payload_bytes = base64.urlsafe_b64decode(padded_payload.encode("utf-8"))
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except (IndexError, ValueError, json.JSONDecodeError):
+        return {}
+
+    return {
+        "email": str(payload.get("email") or ""),
+        "name": str(payload.get("name") or ""),
+    }
 
 
 def get_google_credentials_for_session(
@@ -156,6 +237,7 @@ async def create_app_session(*, user_id: str) -> str:
 def google_login():
     service = GoogleAuthService()
     state_value = service.generate_state()
+    _store_oauth_state(state_value)
     login_url = service.build_login_url(
         state=state_value,
         scopes=["https://www.googleapis.com/auth/presentations.readonly"],
@@ -194,9 +276,10 @@ async def google_callback(
         raise HTTPException(status_code=400, detail="Missing `code` query parameter.")
     if not state:
         raise HTTPException(status_code=400, detail="Missing `state` query parameter.")
-    if not stored_state:
-        raise HTTPException(status_code=400, detail="Missing stored OAuth state.")
-    if not secrets.compare_digest(stored_state, state):
+    has_matching_cookie_state = bool(stored_state) and secrets.compare_digest(stored_state, state)
+    has_matching_server_state = _consume_oauth_state(state)
+
+    if not has_matching_cookie_state and not has_matching_server_state:
         raise HTTPException(status_code=400, detail="Invalid OAuth state.")
 
     service = GoogleAuthService()

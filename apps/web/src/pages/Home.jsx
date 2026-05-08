@@ -16,6 +16,7 @@ import SlideshowOutlinedIcon from '@mui/icons-material/SlideshowOutlined';
 import ButtonAppBar from '../components/AppBar';
 import SideBar from '../components/SideBar';
 import SlidePreview from '../components/SlidePreview';
+import SlidePreview from '../components/SlidePreview';
 import WorkflowActionButtons from '../components/WorkflowActionButtons';
 import WorkflowRequestDialog from '../components/WorkflowRequestDialog';
 import { findNodeById } from '../data/presentationTree';
@@ -128,7 +129,7 @@ function Home() {
         mode === 'folder'
           ? 'Folder created successfully.'
           : mode === 'slides'
-            ? 'Google Slides request added to the workflow.'
+            ? 'Google Slides deck imported and linked successfully.'
             : 'File created successfully.'
       );
       await loadPresentationTree(payload.id);
@@ -380,6 +381,84 @@ function Home() {
             </Box>
           </Stack>
 
+          {selectedFile && (
+            <Paper
+              elevation={0}
+              sx={{
+                border: '1px solid var(--border, #e5e4e7)',
+                borderRadius: 2,
+                p: { xs: 2, md: 3 },
+                backgroundColor: 'var(--surface-raised, #ffffff)',
+              }}
+            >
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={3}
+                alignItems={{ xs: 'stretch', md: 'center' }}
+              >
+                <Box
+                  sx={{
+                    width: { xs: '100%', md: 340 },
+                    aspectRatio: '16 / 9',
+                    borderRadius: 1.5,
+                    border: '1px solid var(--border, #e5e4e7)',
+                    backgroundColor: 'var(--surface, #f7f4fb)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {selectedFile.thumbnailUrl ? (
+                    <SlidePreview
+                      slide={{
+                        slideNumber: 1,
+                        thumbnailUrl: selectedFile.thumbnailUrl,
+                      }}
+                      borderRadius={1.5}
+                    />
+                  ) : (
+                    <Stack spacing={1} alignItems="center">
+                      <SlideshowOutlinedIcon sx={{ fontSize: 56, color: 'var(--primary)' }} />
+                      <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+                        Presentation preview
+                      </Typography>
+                    </Stack>
+                  )}
+                </Box>
+
+                <Stack spacing={1.5} sx={{ minWidth: 0, textAlign: 'left', flex: 1 }}>
+                  <Chip
+                    icon={<SlideshowOutlinedIcon />}
+                    label={selectedFile.presentationId ? 'Linked presentation' : 'File'}
+                    sx={{
+                      alignSelf: 'flex-start',
+                      color: 'var(--interactive-text)',
+                      backgroundColor: 'var(--interactive-bg)',
+                      fontWeight: 700,
+                    }}
+                  />
+                  <Typography variant="h5" sx={{ color: 'var(--text-h)' }}>
+                    {selectedFile.name}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+                    {selectedFile.presentationId
+                      ? 'Launch this deck in the builder schema workspace to configure slide goals, timing, and accessibility checks.'
+                      : 'This file is not linked to a presentation yet.'}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<LaunchOutlinedIcon />}
+                    disabled={!selectedFile.presentationId}
+                    onClick={() => openBuilderSchema(selectedFile)}
+                    sx={{ alignSelf: 'flex-start' }}
+                  >
+                    Edit
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          )}
+
           <Box
             sx={{
               display: 'grid',
@@ -443,16 +522,16 @@ function Home() {
                         }}
                       />
                     ) : (
-                      <Stack spacing={1} alignItems="center">
-                        {isFolder ? (
-                          <FolderOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
-                        ) : (
-                          <SlideshowOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
-                        )}
-                        <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                          {isFolder ? `${item.children.length} items` : 'Preview'}
-                        </Typography>
-                      </Stack>
+                    <Stack spacing={1} alignItems="center">
+                      {isFolder ? (
+                        <FolderOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
+                      ) : (
+                        <SlideshowOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
+                      )}
+                      <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+                        {isFolder ? `${item.children.length} items` : 'Preview'}
+                      </Typography>
+                    </Stack>
                     )}
                   </Box>
 
