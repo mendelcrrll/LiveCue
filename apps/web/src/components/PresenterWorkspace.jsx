@@ -15,6 +15,7 @@ function PresenterWorkspace({
   isTimerPaused,
   isTranscriptionActive,
   isDeletingTranscripts,
+  liveFeedbackEvents,
   nextSlide,
   onDeleteTranscripts,
   onResetTimer,
@@ -121,7 +122,7 @@ function PresenterWorkspace({
               onKeyDown={onResizeKeyDown}
             />
 
-            <PresenterFeedbackPanel slide={activeSlide} />
+            <PresenterFeedbackPanel slide={activeSlide} liveFeedbackEvents={liveFeedbackEvents} />
           </>
         ) : (
           <Alert severity="info">Select a slide to view presenter mode.</Alert>

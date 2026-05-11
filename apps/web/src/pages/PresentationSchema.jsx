@@ -50,6 +50,7 @@ function PresentationSchemaPage() {
   const [isTranscriptionActive, setIsTranscriptionActive] = useState(false);
   const [isDeletingTranscripts, setIsDeletingTranscripts] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState('');
+  const [liveFeedbackEvents, setLiveFeedbackEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const isSlideOnlyMode = searchParams.get('mode') === 'slide';
@@ -538,7 +539,7 @@ function PresentationSchemaPage() {
     const extension = getAudioExtension(mimeType);
 
     try {
-      await TranscriptionService.transcribeAudioChunk({
+      const transcriptChunk = await TranscriptionService.transcribeAudioChunk({
         audioBlob,
         filename: `presentation-${chunkStartedAtMs}-${chunkEndedAtMs}.${extension}`,
         presentationId,
@@ -546,11 +547,75 @@ function PresentationSchemaPage() {
         chunkStartedAtMs,
         chunkEndedAtMs,
       });
+
+      if (transcriptChunk.saved) {
+        await requestFeedbackDecision({ presentationId, slideId });
+      }
     } catch (chunkError) {
       setTranscriptionError(
         chunkError instanceof Error
           ? chunkError.message
           : 'Unable to save a transcription chunk.'
+      );
+    }
+  }
+
+  async function requestFeedbackDecision({ presentationId, slideId }) {
+    const slide = presentationData?.slides.find((candidate) => candidate.slideId === slideId);
+
+    if (!slide?.buildData) {
+      return;
+    }
+
+    const decision = await PresentationBuilderService.generateFeedbackDecision(
+      presentationId,
+      slideId,
+      {
+        buildData: slide.buildData,
+        windowSize: 12,
+      }
+    );
+
+    if (decision.updatedSlide) {
+      setPresentationData((currentData) => {
+        if (!currentData) {
+          return currentData;
+        }
+
+        return {
+          ...currentData,
+          slides: currentData.slides.map((currentSlide) =>
+            currentSlide.slideId === decision.updatedSlide.slideId
+              ? decision.updatedSlide
+              : currentSlide
+          ),
+        };
+      });
+    }
+
+    const nextEvents = Array.isArray(decision.frontendUpdates)
+      ? decision.frontendUpdates
+      : [];
+
+    if (decision.summary || nextEvents.length > 0) {
+      setLiveFeedbackEvents((events) =>
+        [
+          ...nextEvents.map((event) => ({
+            ...event,
+            createdAt: Date.now(),
+          })),
+          ...(decision.summary
+            ? [
+                {
+                  kind: 'log',
+                  action: 'summary',
+                  message: decision.summary,
+                  createdAt: Date.now(),
+                },
+              ]
+            : []),
+          ...events,
+        ].slice(0, 20)
       );
     }
   }
@@ -697,6 +762,7 @@ function PresentationSchemaPage() {
           slidePanelWidth={slidePanelWidth}
           timerSeconds={timerSeconds}
           transcriptionError={transcriptionError}
+          liveFeedbackEvents={liveFeedbackEvents}
           onDeleteTranscripts={() => deleteTranscriptsForActiveDeck()}
           onResetTimer={(nextTimerSeconds) => {
             setTimerSeconds(nextTimerSeconds);

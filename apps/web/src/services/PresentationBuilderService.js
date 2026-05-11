@@ -11,7 +11,15 @@ async function updateSlideBuildData(deckId, slideId, buildData) {
   );
 }
 
+async function generateFeedbackDecision(deckId, slideId, { buildData, windowSize = 12, model } = {}) {
+  return requestJson(
+    `/api/presentations/${deckId}/slides/${slideId}/feedback-decision`,
+    jsonRequestOptions('POST', { buildData, windowSize, model })
+  );
+}
+
 export default {
+  generateFeedbackDecision,
   getSlideDeckBuild,
   updateSlideBuildData,
 };
