@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     llm_provider: str = ""
     stt_provider: str = ""
+    whisper_base_url: str = "http://127.0.0.1:8081"
 
 
 @lru_cache

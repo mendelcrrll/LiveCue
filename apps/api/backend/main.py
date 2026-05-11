@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.routes.auth import router as auth_router
 from backend.routes.google import router as google_router
 from backend.routes.presentations import router as presentations_router
+from backend.routes.transcription import router as transcription_router
 
 app = FastAPI(title="RT Presentation Feedback API")
 
@@ -21,6 +22,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api")
 app.include_router(google_router, prefix="/api")
 app.include_router(presentations_router, prefix="/api")
+app.include_router(transcription_router, prefix="/api")
 
 
 @app.get("/health")
