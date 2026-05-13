@@ -17,6 +17,9 @@ class BuilderPriorityItem(BaseModel):
     text: str
     priority: int
     category: str = "custom"
+    completed: bool = False
+    completedAtMs: int | None = None
+    evidence: str | None = None
 
 
 class BuilderAccessibilityCheck(BaseModel):
@@ -24,6 +27,9 @@ class BuilderAccessibilityCheck(BaseModel):
     label: str
     enabled: bool
     severity: str
+    status: str = "pending"
+    evidence: str | None = None
+    updatedAtMs: int | None = None
 
 
 class BuilderTimingGoal(BaseModel):
@@ -55,3 +61,53 @@ class PresentationBuilderData(BaseModel):
 
 class BuilderSlideUpdateRequest(BaseModel):
     buildData: BuilderSlideData
+
+
+class BuilderSlideNotesUpdateRequest(BaseModel):
+    speakerNotes: str = Field(default="", max_length=20000)
+
+
+class BuilderSchemaGenerationRequest(BaseModel):
+    speakerNotes: str | None = Field(default=None, max_length=20000)
+    model: str | None = Field(default=None, min_length=1)
+
+
+class FeedbackDecisionRequest(BaseModel):
+    buildData: BuilderSlideData
+    windowSize: int | None = Field(
+        default=None,
+        ge=1,
+        le=50,
+        description="Maximum number of transcript chunks to include for this slide.",
+    )
+    model: str | None = Field(default=None, min_length=1)
+
+
+class FeedbackGoalDecision(BaseModel):
+    id: str
+    completed: bool
+    evidence: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class FeedbackAccessibilityDecision(BaseModel):
+    id: str
+    status: str
+    evidence: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class FeedbackTimingDecision(BaseModel):
+    elapsedMs: int
+    goalMs: int
+    status: str
+    message: str = ""
+
+
+class FeedbackDecision(BaseModel):
+    summary: str = ""
+    goalUpdates: list[FeedbackGoalDecision]
+    accessibilityUpdates: list[FeedbackAccessibilityDecision]
+    timing: FeedbackTimingDecision | None = None
+    frontendUpdates: list[dict]
+    updatedSlide: BuilderSlide

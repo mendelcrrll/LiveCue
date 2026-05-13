@@ -52,7 +52,7 @@ const addGoalRowSx = {
   },
 };
 
-function PriorityQueueEditor({ items = [], onChange }) {
+function PriorityQueueEditor({ items = [], onChange, isGenerating = false }) {
   const sortedItems = [...items].sort((a, b) => a.priority - b.priority);
 
   function updateItems(nextItems) {
@@ -104,13 +104,24 @@ function PriorityQueueEditor({ items = [], onChange }) {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-        <Box sx={{ minWidth: 0, mr: 'auto' }}>
+      <Stack
+        direction="row"
+        spacing={2}
+        alignItems="center"
+        sx={{
+          width: '100%',
+          display: 'grid',
+          gridTemplateColumns: '1fr',
+        }}
+      >
+        <Box sx={{ minWidth: 0, width: '100%', textAlign: 'center' }}>
           <Typography variant="h6" sx={{ color: 'var(--text-h)' }}>
             Presentation Goals
           </Typography>
           <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-            Prioritize what the presenter should remember for this slide.
+            {isGenerating
+              ? 'Generating goals, timing, and accessibility checks...'
+              : 'Prioritize what the presenter should remember for this slide.'}
           </Typography>
         </Box>
       </Stack>

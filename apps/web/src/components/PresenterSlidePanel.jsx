@@ -8,6 +8,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import RecordingStatusIndicator from './RecordingStatusIndicator';
 import SlidePreview from './SlidePreview';
 
 function PresenterSlidePanel({
@@ -16,6 +17,8 @@ function PresenterSlidePanel({
   nextSlide,
   timerSeconds,
   isTimerPaused,
+  isRecording,
+  transcriptionStatus,
   onToggleTimer,
   onResetTimer,
   onSelectSlide,
@@ -41,7 +44,9 @@ function PresenterSlidePanel({
           height: '100%',
           minHeight: 0,
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr) minmax(96px, 0.32fr)',
+          gridTemplateRows: transcriptionStatus
+            ? 'auto auto minmax(0, 1fr) minmax(96px, 0.32fr)'
+            : 'auto minmax(0, 1fr) minmax(96px, 0.32fr)',
           gap: 1.5,
           overflow: 'hidden',
         }}
@@ -69,9 +74,11 @@ function PresenterSlidePanel({
           <Stack
             direction="row"
             spacing={0.75}
+            alignItems="center"
             justifyContent="flex-end"
             sx={{ flex: '0 0 auto', ml: 'auto' }}
           >
+            <RecordingStatusIndicator isRecording={isRecording} />
             <Tooltip title="Restart timer" placement="bottom" arrow>
               <IconButton
                 aria-label="restart timer"
@@ -93,9 +100,14 @@ function PresenterSlidePanel({
                   <PauseCircleOutlineOutlinedIcon fontSize="medium" />
               )}
             </IconButton>
-          </Tooltip>
+            </Tooltip>
           </Stack>
         </Stack>
+        {transcriptionStatus && (
+          <Typography variant="caption" sx={{ color: 'var(--text-muted)', mt: -1 }}>
+            {transcriptionStatus}
+          </Typography>
+        )}
 
         <SlidePreview
           slide={slide}

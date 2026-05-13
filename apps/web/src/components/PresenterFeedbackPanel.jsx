@@ -3,10 +3,11 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
-function PresenterFeedbackPanel({ slide }) {
+function PresenterFeedbackPanel({ liveFeedbackEvents = [], slide }) {
   const priorityItems = [...(slide.buildData?.priorityItems ?? [])].sort(
     (a, b) => a.priority - b.priority
   );
+  const accessibilityChecks = slide.buildData?.accessibilityChecks ?? [];
 
   return (
     <Box
@@ -74,7 +75,62 @@ function PresenterFeedbackPanel({ slide }) {
       </PresenterWindow>
 
       <PresenterWindow title="Live Feedback Log">
-        <Box sx={{ minHeight: 0 }} />
+        <Stack spacing={1.25}>
+          {liveFeedbackEvents.length > 0 ? (
+            liveFeedbackEvents.map((event, index) => (
+              <Box
+                key={`${event.createdAt ?? 'event'}-${index}`}
+                sx={{
+                  border: '1px solid var(--border, #e5e4e7)',
+                  borderRadius: 1,
+                  px: 1.5,
+                  py: 1,
+                  backgroundColor: 'var(--surface, #f7f4fb)',
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{ color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}
+                >
+                  {formatEventKind(event.kind)}
+                </Typography>
+                <Typography sx={{ color: 'var(--text-h)' }}>
+                  {event.message || event.action || 'Feedback updated'}
+                </Typography>
+              </Box>
+            ))
+          ) : (
+            <Typography sx={{ color: 'var(--text-muted)' }}>
+              Feedback decisions will appear as transcript chunks are processed.
+            </Typography>
+          )}
+
+          {accessibilityChecks.length > 0 && (
+            <Box sx={{ pt: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ color: 'var(--text-h)', fontWeight: 800 }}>
+                Accessibility
+              </Typography>
+              <Stack spacing={0.75} sx={{ mt: 0.75 }}>
+                {accessibilityChecks.map((check) => (
+                  <Box
+                    key={check.id}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 1,
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    <Typography variant="body2">{check.label}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 750 }}>
+                      {formatStatus(check.status)}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </Stack>
       </PresenterWindow>
     </Box>
   );
@@ -114,6 +170,18 @@ function PresenterWindow({ title, children }) {
 
 function isPriorityItemComplete(item) {
   return Boolean(item.completed || item.complete || item.isComplete || item.finished);
+}
+
+function formatEventKind(kind = '') {
+  if (!kind) {
+    return 'Update';
+  }
+
+  return kind.replace(/[_-]/g, ' ');
+}
+
+function formatStatus(status = 'pending') {
+  return status.replace(/[_-]/g, ' ');
 }
 
 export default PresenterFeedbackPanel;

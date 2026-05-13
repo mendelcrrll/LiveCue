@@ -8,11 +8,11 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import ButtonAppBar from '../components/AppBar';
 import FullPageSlide from '../components/FullPageSlide';
-import PresenterFeedbackPanel from '../components/PresenterFeedbackPanel';
-import PresenterSlidePanel from '../components/PresenterSlidePanel';
+import PresenterWorkspace from '../components/PresenterWorkspace';
 import SideBar from '../components/SideBar';
 import { findNodeById } from '../data/presentationTree';
 import PresentationBuilderService from '../services/PresentationBuilderService';
+import TranscriptionService from '../services/TranscriptionService';
 import PresentationWorkflowService from '../services/PresentationWorkflowService';
 import { sortSlidesByNumber } from '../utils/slideUtils';
 
@@ -20,8 +20,7 @@ const DRAWER_WIDTH = 320;
 const SLIDE_PANEL_MIN_WIDTH = 320;
 const SLIDE_PANEL_MAX_WIDTH = 760;
 const FEEDBACK_PANEL_MIN_WIDTH = 420;
-const PRESENTER_WORKSPACE_SCALE = 0.95;
-const PRESENTER_WORKSPACE_TOP_OFFSET = 92;
+const TRANSCRIPTION_CHUNK_MS = 5000;
 
 function getClampedSlidePanelWidth(width, gridWidth) {
   const maxWidth = Math.max(
@@ -47,12 +46,26 @@ function PresentationSchemaPage() {
   const [activeSlideId, setActiveSlideId] = useState('');
   const [slidePanelWidth, setSlidePanelWidth] = useState(520);
   const [timerSeconds, setTimerSeconds] = useState(0);
-  const [isTimerPaused, setIsTimerPaused] = useState(false);
+  const [isTimerPaused, setIsTimerPaused] = useState(true);
+  const [isTranscriptionActive, setIsTranscriptionActive] = useState(false);
+  const [isDeletingTranscripts, setIsDeletingTranscripts] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState('');
+  const [liveFeedbackEvents, setLiveFeedbackEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const isSlideOnlyMode = searchParams.get('mode') === 'slide';
   const [initialSlideId] = useState(() => searchParams.get('slideId'));
   const panelGridRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const transcriptionWindowTimeoutRef = useRef(null);
+  const transcriptionShouldContinueRef = useRef(false);
+  const recordingStartedAtRef = useRef(0);
+  const lastChunkEndedAtMsRef = useRef(0);
+  const activeDeckIdRef = useRef('');
+  const activeSlideIdRef = useRef('');
+  const presentationDataRef = useRef(null);
+  const feedbackDecisionStateRef = useRef({ inFlight: false, pending: null });
 
   useEffect(() => {
     async function loadWorkflowTree() {
@@ -129,8 +142,20 @@ function PresentationSchemaPage() {
 
   useEffect(() => {
     setTimerSeconds(activeSlideTimingSeconds);
-    setIsTimerPaused(false);
+    setIsTimerPaused(true);
   }, [activeSlideId, activeSlideTimingSeconds]);
+
+  useEffect(() => {
+    activeDeckIdRef.current = activeDeckId ?? '';
+  }, [activeDeckId]);
+
+  useEffect(() => {
+    presentationDataRef.current = presentationData;
+  }, [presentationData]);
+
+  useEffect(() => {
+    activeSlideIdRef.current = activeSlideId ?? '';
+  }, [activeSlideId]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -306,6 +331,25 @@ function PresentationSchemaPage() {
   }, [deckId, isSlideOnlyMode]);
 
   useEffect(() => {
+    return () => {
+      stopTranscriptionCapture();
+      deleteTranscriptsForActiveDeck({ keepalive: true, showErrors: false });
+    };
+  }, []);
+
+  useEffect(() => {
+    function handlePresenterViewExit() {
+      deleteTranscriptsForActiveDeck({ keepalive: true, showErrors: false });
+    }
+
+    window.addEventListener('beforeunload', handlePresenterViewExit);
+
+    return () => {
+      window.removeEventListener('beforeunload', handlePresenterViewExit);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!deckId || !isSlideOnlyMode) {
       return undefined;
     }
@@ -357,8 +401,283 @@ function PresentationSchemaPage() {
     }
   }
 
-  function handleNavigateHome() {
+  async function handleNavigateHome() {
+    await deleteTranscriptsForActiveDeck();
     navigate('/');
+  }
+
+  async function handleTogglePresentation() {
+    if (isTimerPaused) {
+      const started = await startTranscriptionCapture();
+
+      if (started) {
+        setIsTimerPaused(false);
+      }
+
+      return;
+    }
+
+    setIsTimerPaused(true);
+    stopTranscriptionCapture();
+  }
+
+  async function startTranscriptionCapture() {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      setIsTranscriptionActive(true);
+      return true;
+    }
+
+    if (!activeDeckIdRef.current || !activeSlideIdRef.current) {
+      setTranscriptionError('Select a slide before starting presentation transcription.');
+      return false;
+    }
+
+    try {
+      setTranscriptionError('');
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getSupportedAudioMimeType();
+
+      mediaStreamRef.current = stream;
+      transcriptionShouldContinueRef.current = true;
+      recordingStartedAtRef.current = Date.now();
+      lastChunkEndedAtMsRef.current = 0;
+
+      startTranscriptionWindow(stream, mimeType);
+      setIsTranscriptionActive(true);
+      return true;
+    } catch (recordingError) {
+      setTranscriptionError(
+        recordingError instanceof Error
+          ? recordingError.message
+          : 'Unable to start microphone transcription.'
+      );
+      setIsTranscriptionActive(false);
+      return false;
+    }
+  }
+
+  function startTranscriptionWindow(stream, mimeType) {
+    const audioChunks = [];
+    const presentationId = activeDeckIdRef.current;
+    const slideId = activeSlideIdRef.current;
+    const chunkStartedAtMs = lastChunkEndedAtMsRef.current;
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunks.push(event.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      const chunkEndedAtMs = Date.now() - recordingStartedAtRef.current;
+      const recordedMimeType = recorder.mimeType || mimeType || 'audio/webm';
+
+      lastChunkEndedAtMsRef.current = chunkEndedAtMs;
+      mediaRecorderRef.current = null;
+
+      if (
+        transcriptionShouldContinueRef.current &&
+        mediaStreamRef.current &&
+        mediaStreamRef.current.active
+      ) {
+        startTranscriptionWindow(mediaStreamRef.current, mimeType);
+      } else {
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+        setIsTranscriptionActive(false);
+      }
+
+      if (audioChunks.length > 0) {
+        const audioBlob = new Blob(audioChunks, { type: recordedMimeType });
+        void uploadTranscriptionChunk({
+          audioBlob,
+          mimeType: recordedMimeType,
+          presentationId,
+          slideId,
+          chunkStartedAtMs,
+          chunkEndedAtMs,
+        });
+      }
+    };
+
+    mediaRecorderRef.current = recorder;
+    recorder.start();
+
+    transcriptionWindowTimeoutRef.current = window.setTimeout(() => {
+      if (recorder.state !== 'inactive') {
+        recorder.stop();
+      }
+    }, TRANSCRIPTION_CHUNK_MS);
+  }
+
+  function stopTranscriptionCapture() {
+    const recorder = mediaRecorderRef.current;
+
+    transcriptionShouldContinueRef.current = false;
+    window.clearTimeout(transcriptionWindowTimeoutRef.current);
+    transcriptionWindowTimeoutRef.current = null;
+
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+      return;
+    }
+
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    setIsTranscriptionActive(false);
+  }
+
+  async function uploadTranscriptionChunk({
+    audioBlob,
+    mimeType,
+    presentationId,
+    slideId,
+    chunkStartedAtMs,
+    chunkEndedAtMs,
+  }) {
+    if (!presentationId || !slideId) {
+      return;
+    }
+
+    const extension = getAudioExtension(mimeType);
+
+    try {
+      const transcriptChunk = await TranscriptionService.transcribeAudioChunk({
+        audioBlob,
+        filename: `presentation-${chunkStartedAtMs}-${chunkEndedAtMs}.${extension}`,
+        presentationId,
+        slideId,
+        chunkStartedAtMs,
+        chunkEndedAtMs,
+      });
+
+      if (transcriptChunk.saved) {
+        await requestFeedbackDecision({ presentationId, slideId });
+      }
+    } catch (chunkError) {
+      setTranscriptionError(
+        chunkError instanceof Error
+          ? chunkError.message
+          : 'Unable to save a transcription chunk.'
+      );
+    }
+  }
+
+  async function requestFeedbackDecision({ presentationId, slideId }) {
+    const decisionState = feedbackDecisionStateRef.current;
+
+    if (decisionState.inFlight) {
+      decisionState.pending = { presentationId, slideId };
+      return;
+    }
+
+    decisionState.inFlight = true;
+
+    try {
+      let nextRequest = { presentationId, slideId };
+
+      while (nextRequest) {
+        const currentRequest = nextRequest;
+
+        decisionState.pending = null;
+        await runFeedbackDecision(currentRequest);
+        nextRequest = decisionState.pending;
+      }
+    } finally {
+      decisionState.inFlight = false;
+    }
+  }
+
+  async function runFeedbackDecision({ presentationId, slideId }) {
+    const currentPresentationData = presentationDataRef.current;
+    const slide = currentPresentationData?.slides.find((candidate) => candidate.slideId === slideId);
+
+    if (!slide?.buildData) {
+      return;
+    }
+
+    const decision = await PresentationBuilderService.generateFeedbackDecision(
+      presentationId,
+      slideId,
+      {
+        buildData: slide.buildData,
+        windowSize: 12,
+      }
+    );
+
+    if (decision.updatedSlide) {
+      setPresentationData((currentData) => {
+        if (!currentData) {
+          return currentData;
+        }
+
+        return {
+          ...currentData,
+          slides: currentData.slides.map((currentSlide) =>
+            currentSlide.slideId === decision.updatedSlide.slideId
+              ? decision.updatedSlide
+              : currentSlide
+          ),
+        };
+      });
+    }
+
+    const nextEvents = Array.isArray(decision.frontendUpdates)
+      ? decision.frontendUpdates
+      : [];
+
+    if (decision.summary || nextEvents.length > 0) {
+      setLiveFeedbackEvents((events) =>
+        [
+          ...nextEvents.map((event) => ({
+            ...event,
+            createdAt: Date.now(),
+          })),
+          ...(decision.summary
+            ? [
+                {
+                  kind: 'log',
+                  action: 'summary',
+                  message: decision.summary,
+                  createdAt: Date.now(),
+                },
+              ]
+            : []),
+          ...events,
+        ].slice(0, 20)
+      );
+    }
+  }
+
+  async function deleteTranscriptsForActiveDeck({ keepalive = false, showErrors = true } = {}) {
+    const presentationId = activeDeckIdRef.current;
+
+    if (!presentationId) {
+      return;
+    }
+
+    try {
+      if (!keepalive) {
+        setIsDeletingTranscripts(true);
+      }
+
+      await TranscriptionService.deletePresentationTranscriptChunks(presentationId, { keepalive });
+    } catch (deleteError) {
+      if (showErrors) {
+        setTranscriptionError(
+          deleteError instanceof Error
+            ? deleteError.message
+            : 'Unable to delete transcript chunks.'
+        );
+      }
+    } finally {
+      if (!keepalive) {
+        setIsDeletingTranscripts(false);
+      }
+    }
   }
 
   function clampSlidePanelWidth(width) {
@@ -461,98 +780,32 @@ function PresentationSchemaPage() {
       >
         <Toolbar />
 
-        <Stack
-          spacing={0}
-          sx={{
-            width: {
-              xs: '100%',
-              lg: `${100 / PRESENTER_WORKSPACE_SCALE}%`,
-            },
-            maxWidth: {
-              xs: 1440,
-              lg: 1440 / PRESENTER_WORKSPACE_SCALE,
-            },
-            mx: 'auto',
-            mt: 1,
-            minHeight: 0,
-            transform: { lg: `scale(${PRESENTER_WORKSPACE_SCALE})` },
-            transformOrigin: 'top left',
+        <PresenterWorkspace
+          activeSlide={activeSlide}
+          activeSlideTimingSeconds={activeSlideTimingSeconds}
+          isDeletingTranscripts={isDeletingTranscripts}
+          isTimerPaused={isTimerPaused}
+          isTranscriptionActive={isTranscriptionActive}
+          nextSlide={nextSlide}
+          panelGridRef={panelGridRef}
+          previousSlide={previousSlide}
+          slidePanelMaxWidth={SLIDE_PANEL_MAX_WIDTH}
+          slidePanelMinWidth={SLIDE_PANEL_MIN_WIDTH}
+          slidePanelWidth={slidePanelWidth}
+          timerSeconds={timerSeconds}
+          transcriptionError={transcriptionError}
+          liveFeedbackEvents={liveFeedbackEvents}
+          onDeleteTranscripts={() => deleteTranscriptsForActiveDeck()}
+          onResetTimer={(nextTimerSeconds) => {
+            setTimerSeconds(nextTimerSeconds);
+            setIsTimerPaused(true);
+            stopTranscriptionCapture();
           }}
-        >
-          <Box
-            ref={panelGridRef}
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                lg: `${slidePanelWidth}px 16px minmax(0, 1fr)`,
-              },
-              gap: { xs: 2, lg: 0 },
-              alignItems: 'stretch',
-              height: {
-                lg: `calc((100vh - ${PRESENTER_WORKSPACE_TOP_OFFSET}px) / ${PRESENTER_WORKSPACE_SCALE})`,
-              },
-              minHeight: { lg: 0 },
-              maxHeight: {
-                lg: `calc((100vh - ${PRESENTER_WORKSPACE_TOP_OFFSET}px) / ${PRESENTER_WORKSPACE_SCALE})`,
-              },
-              overflow: { lg: 'hidden' },
-            }}
-          >
-            {activeSlide ? (
-              <>
-                <PresenterSlidePanel
-                  slide={activeSlide}
-                  previousSlide={previousSlide}
-                  nextSlide={nextSlide}
-                  timerSeconds={timerSeconds}
-                  isTimerPaused={isTimerPaused}
-                  onToggleTimer={() => setIsTimerPaused((paused) => !paused)}
-                  onResetTimer={() => {
-                    setTimerSeconds(activeSlideTimingSeconds);
-                    setIsTimerPaused(false);
-                  }}
-                  onSelectSlide={handleSelectSlide}
-                />
-
-                <Box
-                  role="separator"
-                  aria-label="Resize presenter panels"
-                  aria-orientation="vertical"
-                  aria-valuemin={SLIDE_PANEL_MIN_WIDTH}
-                  aria-valuemax={SLIDE_PANEL_MAX_WIDTH}
-                  aria-valuenow={slidePanelWidth}
-                  tabIndex={0}
-                  onPointerDown={handleResizePointerDown}
-                  onKeyDown={handleResizeKeyDown}
-                  sx={{
-                    display: { xs: 'none', lg: 'flex' },
-                    alignSelf: 'stretch',
-                    justifyContent: 'center',
-                    cursor: 'col-resize',
-                    touchAction: 'none',
-                    outline: 'none',
-                    '&::before': {
-                      content: '""',
-                      width: 4,
-                      borderRadius: 999,
-                      backgroundColor: 'var(--border, #cbbfda)',
-                      transition: 'background-color 120ms ease, width 120ms ease',
-                    },
-                    '&:hover::before, &:focus-visible::before': {
-                      width: 6,
-                      backgroundColor: 'var(--interactive-border, #8e72bf)',
-                    },
-                  }}
-                />
-
-                <PresenterFeedbackPanel slide={activeSlide} />
-              </>
-            ) : (
-              <Alert severity="info">Select a slide to view presenter mode.</Alert>
-            )}
-          </Box>
-        </Stack>
+          onResizeKeyDown={handleResizeKeyDown}
+          onResizePointerDown={handleResizePointerDown}
+          onSelectSlide={handleSelectSlide}
+          onTogglePresentation={handleTogglePresentation}
+        />
       </Box>
     </Box>
   );
@@ -615,6 +868,24 @@ function isEditableTarget(target) {
     tagName === 'textarea' ||
     tagName === 'select'
   );
+}
+
+function getSupportedAudioMimeType() {
+  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+
+  return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
+}
+
+function getAudioExtension(mimeType = '') {
+  if (mimeType.includes('mp4')) {
+    return 'mp4';
+  }
+
+  if (mimeType.includes('ogg')) {
+    return 'ogg';
+  }
+
+  return 'webm';
 }
 
 function getActiveSlideStorageKey(deckId) {

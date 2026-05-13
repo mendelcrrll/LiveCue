@@ -1,14 +1,23 @@
+import re
 import time
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Cookie, HTTPException, Response, status
 
+from backend.ai.model_client import ModelClient
 from backend.auth.google_auth import GoogleAuthService
 from backend.database import get_session
 from backend.google.presentation_import import import_google_slides_presentation
+from backend.google.schemas import GoogleSlidesPresentationInput
 from backend.google.slides_client import GoogleSlidesClient
-from backend.persistence.models import Presentation, PresentationSlide, SlidePriorityItem
+from backend.persistence.models import (
+    Presentation,
+    PresentationSlide,
+    PresentationTranscriptChunk,
+    SlidePriorityItem,
+)
+from backend.persistence.presentations import _add_readable_slide_context
 from backend.persistence.workflow_tree import (
     create_workflow_file,
     create_workflow_folder,
@@ -19,10 +28,14 @@ from backend.routes.auth import GOOGLE_CREDENTIALS_BY_USER_ID, get_google_creden
 from backend.schemas.presentations import (
     BuilderAccessibilityCheck,
     BuilderPriorityItem,
+    BuilderSchemaGenerationRequest,
     BuilderSlide,
     BuilderSlideData,
+    BuilderSlideNotesUpdateRequest,
     BuilderSlideUpdateRequest,
     BuilderTimingGoal,
+    FeedbackDecision,
+    FeedbackDecisionRequest,
     PresentationBuilderData,
     PresentationImportRequest,
     PresentationImportResponse,
@@ -114,6 +127,51 @@ async def refresh_slide_thumbnail(
         session.close()
 
 
+@router.post("/{presentation_id}/refresh-google-context", response_model=PresentationBuilderData)
+async def refresh_google_context(
+    presentation_id: UUID,
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
+    credentials = get_google_credentials_for_session(session_id)
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Connect Google to refresh slide notes and context.",
+        )
+
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        presentation_payload = await _fetch_presentation_with_refresh(
+            credentials=credentials,
+            google_presentation_id=presentation.google_presentation_id,
+        )
+        normalized_payload = GoogleSlidesPresentationInput.model_validate(presentation_payload)
+        _refresh_presentation_context(
+            presentation=presentation,
+            payload=normalized_payload,
+        )
+        session.commit()
+        session.refresh(presentation)
+
+        return _to_builder_response(presentation)
+    except HTTPException:
+        session.rollback()
+        raise
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        session.close()
+
+
 @router.put(
     "/{presentation_id}/builder-schema/slides/{slide_id}",
     response_model=BuilderSlide,
@@ -144,6 +202,193 @@ def update_builder_slide(
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        session.close()
+
+
+@router.put(
+    "/{presentation_id}/builder-schema/slides/{slide_id}/notes",
+    response_model=BuilderSlide,
+)
+async def update_builder_slide_notes(
+    presentation_id: UUID,
+    slide_id: UUID,
+    payload: BuilderSlideNotesUpdateRequest,
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
+    credentials = get_google_credentials_for_session(session_id)
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Connect Google to save speaker notes.",
+        )
+
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        slide = session.get(PresentationSlide, slide_id)
+        if slide is None or slide.presentation_id != presentation_id:
+            raise HTTPException(status_code=404, detail="Slide not found.")
+
+        speaker_notes_object_id = _get_speaker_notes_object_id(slide)
+        if not speaker_notes_object_id:
+            raise HTTPException(status_code=400, detail="Speaker notes object was not found.")
+
+        await _update_speaker_notes_with_refresh(
+            credentials=credentials,
+            google_presentation_id=presentation.google_presentation_id,
+            speaker_notes_object_id=speaker_notes_object_id,
+            speaker_notes=payload.speakerNotes,
+        )
+
+        raw_page = dict(slide.raw_page or {})
+        raw_page["speakerNotes"] = payload.speakerNotes
+        slide.raw_page = raw_page
+        session.commit()
+        session.refresh(slide)
+
+        return _to_builder_slide(slide)
+    except HTTPException:
+        session.rollback()
+        raise
+    except httpx.HTTPStatusError as exc:
+        session.rollback()
+        raise _google_api_exception(exc) from exc
+    finally:
+        session.close()
+
+
+@router.post(
+    "/{presentation_id}/builder-schema/slides/{slide_id}/generate",
+    response_model=BuilderSlideData,
+)
+async def generate_builder_slide_schema(
+    presentation_id: UUID,
+    slide_id: UUID,
+    payload: BuilderSchemaGenerationRequest,
+):
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        slide = session.get(PresentationSlide, slide_id)
+        if slide is None or slide.presentation_id != presentation_id:
+            raise HTTPException(status_code=404, detail="Slide not found.")
+
+        context = _build_builder_schema_context(
+            presentation=presentation,
+            slide=slide,
+            speaker_notes_override=payload.speakerNotes,
+            model=payload.model,
+        )
+        raw_schema = await ModelClient().generate_builder_schema(context)
+        return _normalize_generated_builder_schema(raw_schema=raw_schema, slide=slide)
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unable to generate builder schema: {exc}",
+        ) from exc
+    finally:
+        session.close()
+
+
+@router.post(
+    "/{presentation_id}/slides/{slide_id}/feedback-decision",
+    response_model=FeedbackDecision,
+)
+async def generate_feedback_decision(
+    presentation_id: UUID,
+    slide_id: UUID,
+    payload: FeedbackDecisionRequest,
+):
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        slide = session.get(PresentationSlide, slide_id)
+        if slide is None or slide.presentation_id != presentation_id:
+            raise HTTPException(status_code=404, detail="Slide not found.")
+
+        window_size = payload.windowSize or 12
+        transcript_chunks = _get_slide_transcript_window(
+            session=session,
+            presentation_id=presentation_id,
+            slide_id=slide_id,
+            limit=window_size,
+        )
+
+        if not transcript_chunks:
+            updated_slide = _to_builder_slide(slide)
+            return FeedbackDecision(
+                summary="No transcript is available for this slide yet.",
+                goalUpdates=[],
+                accessibilityUpdates=[],
+                timing=None,
+                frontendUpdates=[
+                    {
+                        "kind": "log",
+                        "action": "wait_for_transcript",
+                        "message": "No transcript is available for this slide yet.",
+                    }
+                ],
+                updatedSlide=updated_slide,
+            )
+
+        context = _build_feedback_context(
+            presentation=presentation,
+            slide=slide,
+            build_data=payload.buildData,
+            transcript_chunks=transcript_chunks,
+            model=payload.model,
+        )
+        raw_decision = await ModelClient().generate_feedback(context)
+        normalized = _normalize_feedback_decision(
+            raw_decision=raw_decision,
+            build_data=payload.buildData,
+            elapsed_ms=transcript_chunks[-1].chunk_ended_at_ms,
+        )
+
+        _apply_feedback_decision_to_slide(
+            session=session,
+            slide=slide,
+            build_data=payload.buildData,
+            decision=normalized,
+        )
+        session.commit()
+        session.refresh(slide)
+
+        updated_slide = _to_builder_slide(slide)
+        return FeedbackDecision(
+            summary=normalized["summary"],
+            goalUpdates=normalized["goalUpdates"],
+            accessibilityUpdates=normalized["accessibilityUpdates"],
+            timing=normalized["timing"],
+            frontendUpdates=normalized["frontendUpdates"],
+            updatedSlide=updated_slide,
+        )
+    except HTTPException:
+        session.rollback()
+        raise
+    except RuntimeError as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=502, detail=f"Unable to generate feedback: {exc}") from exc
     finally:
         session.close()
 
@@ -313,6 +558,154 @@ async def _fetch_thumbnail_with_refresh(
         )
 
 
+async def _fetch_presentation_with_refresh(
+    *,
+    credentials,
+    google_presentation_id: str,
+) -> dict:
+    client = GoogleSlidesClient(access_token=credentials.access_token)
+
+    try:
+        return dict(await client.fetch_presentation(google_presentation_id))
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 401 or not credentials.refresh_token:
+            raise
+
+        refreshed = await GoogleAuthService().refresh_access_token(
+            refresh_token=credentials.refresh_token,
+        )
+        credentials.access_token = refreshed.access_token
+        credentials.refresh_token = refreshed.refresh_token or credentials.refresh_token
+        credentials.expires_at = int(time.time()) + max(refreshed.expires_in, 0)
+        credentials.scope = refreshed.scope
+        credentials.token_type = refreshed.token_type
+        credentials.id_token = refreshed.id_token or credentials.id_token
+        GOOGLE_CREDENTIALS_BY_USER_ID[credentials.user_id] = credentials
+
+        client = GoogleSlidesClient(access_token=credentials.access_token)
+        return dict(await client.fetch_presentation(google_presentation_id))
+
+
+def _refresh_presentation_context(
+    *,
+    presentation: Presentation,
+    payload: GoogleSlidesPresentationInput,
+) -> None:
+    presentation.title = payload.title
+    presentation.locale = payload.locale
+    presentation.revision_id = payload.revisionId
+    presentation.raw_payload = payload.model_dump(mode="python")
+
+    existing_slides = {slide.google_object_id: slide for slide in presentation.slides}
+    refreshed_slides: list[PresentationSlide] = []
+
+    for slide_index, slide_payload in enumerate(payload.slides):
+        slide = existing_slides.get(slide_payload.objectId)
+        if slide is None:
+            slide = PresentationSlide(google_object_id=slide_payload.objectId)
+
+        old_raw_page = dict(slide.raw_page or {})
+        next_raw_page = _add_readable_slide_context(
+            slide_payload.model_dump(mode="python"),
+            slide_index=slide_index,
+        )
+        _preserve_builder_context(old_raw_page=old_raw_page, next_raw_page=next_raw_page)
+
+        slide.slide_index = slide_index
+        slide.page_type = slide_payload.pageType
+        slide.raw_page = next_raw_page
+        refreshed_slides.append(slide)
+
+    presentation.slides = refreshed_slides
+
+
+def _preserve_builder_context(
+    *,
+    old_raw_page: dict,
+    next_raw_page: dict,
+) -> None:
+    for key in (
+        "builderAccessibilityChecks",
+        "lastFeedbackDecision",
+        "thumbnailUrl",
+        "imageUrl",
+    ):
+        if old_raw_page.get(key) is not None and next_raw_page.get(key) is None:
+            next_raw_page[key] = old_raw_page[key]
+
+
+async def _update_speaker_notes_with_refresh(
+    *,
+    credentials,
+    google_presentation_id: str,
+    speaker_notes_object_id: str,
+    speaker_notes: str,
+) -> dict:
+    client = GoogleSlidesClient(access_token=credentials.access_token)
+    requests = _build_speaker_notes_update_requests(
+        speaker_notes_object_id=speaker_notes_object_id,
+        speaker_notes=speaker_notes,
+    )
+
+    try:
+        return dict(await client.batch_update_presentation(google_presentation_id, requests))
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 401 or not credentials.refresh_token:
+            raise
+
+        refreshed = await GoogleAuthService().refresh_access_token(
+            refresh_token=credentials.refresh_token,
+        )
+        credentials.access_token = refreshed.access_token
+        credentials.refresh_token = refreshed.refresh_token or credentials.refresh_token
+        credentials.expires_at = int(time.time()) + max(refreshed.expires_in, 0)
+        credentials.scope = refreshed.scope
+        credentials.token_type = refreshed.token_type
+        credentials.id_token = refreshed.id_token or credentials.id_token
+        GOOGLE_CREDENTIALS_BY_USER_ID[credentials.user_id] = credentials
+
+        client = GoogleSlidesClient(access_token=credentials.access_token)
+        return dict(await client.batch_update_presentation(google_presentation_id, requests))
+
+
+def _build_speaker_notes_update_requests(
+    *,
+    speaker_notes_object_id: str,
+    speaker_notes: str,
+) -> list[dict]:
+    requests: list[dict] = [
+        {
+            "deleteText": {
+                "objectId": speaker_notes_object_id,
+                "textRange": {"type": "ALL"},
+            }
+        }
+    ]
+
+    if speaker_notes:
+        requests.append(
+            {
+                "insertText": {
+                    "objectId": speaker_notes_object_id,
+                    "insertionIndex": 0,
+                    "text": speaker_notes,
+                }
+            }
+        )
+
+    return requests
+
+
+def _get_speaker_notes_object_id(slide: PresentationSlide) -> str | None:
+    raw_page = slide.raw_page or {}
+    notes_properties = (
+        ((raw_page.get("slideProperties") or {}).get("notesPage") or {}).get("notesProperties")
+        or {}
+    )
+    object_id = notes_properties.get("speakerNotesObjectId")
+    return str(object_id) if object_id else None
+
+
 def _to_builder_response(presentation: Presentation) -> PresentationBuilderData:
     return PresentationBuilderData(
         deckId=str(presentation.id),
@@ -323,7 +716,7 @@ def _to_builder_response(presentation: Presentation) -> PresentationBuilderData:
 
 def _to_builder_slide(slide) -> BuilderSlide:
     slide_number = slide.slide_index + 1
-    raw_page = slide.raw_page or {}
+    raw_page = _ensure_readable_slide_context(slide)
     title = raw_page.get("title") or f"Slide {slide_number}"
     slide_text = raw_page.get("slideText") or raw_page.get("text") or []
     speaker_notes = raw_page.get("speakerNotes") or raw_page.get("notes") or ""
@@ -347,6 +740,9 @@ def _to_builder_slide(slide) -> BuilderSlide:
                     text=item.title,
                     priority=item.priority_rank,
                     category=item.extra_data.get("category", "custom"),
+                    completed=bool(item.extra_data.get("completed", False)),
+                    completedAtMs=item.extra_data.get("completedAtMs"),
+                    evidence=item.extra_data.get("evidence"),
                 )
                 for item in slide.priority_items
             ],
@@ -385,12 +781,543 @@ def _apply_builder_slide_data(
         SlidePriorityItem(
             priority_rank=index + 1,
             title=item.text,
-            extra_data={"category": item.category},
+            extra_data={
+                "category": item.category,
+                "completed": item.completed,
+                "completedAtMs": item.completedAtMs,
+                "evidence": item.evidence,
+            },
         )
         for index, item in enumerate(
             sorted(build_data.priorityItems, key=lambda priority_item: priority_item.priority)
         )
     ]
+
+
+def _get_slide_transcript_window(
+    *,
+    session,
+    presentation_id: UUID,
+    slide_id: UUID,
+    limit: int,
+) -> list[PresentationTranscriptChunk]:
+    chunks = (
+        session.query(PresentationTranscriptChunk)
+        .filter(
+            PresentationTranscriptChunk.presentation_id == presentation_id,
+            PresentationTranscriptChunk.slide_id == slide_id,
+        )
+        .order_by(PresentationTranscriptChunk.chunk_started_at_ms.desc())
+        .limit(limit)
+        .all()
+    )
+    return list(reversed(chunks))
+
+
+def _build_feedback_context(
+    *,
+    presentation: Presentation,
+    slide: PresentationSlide,
+    build_data: BuilderSlideData,
+    transcript_chunks: list[PresentationTranscriptChunk],
+    model: str | None,
+) -> dict:
+    raw_page = _ensure_readable_slide_context(slide)
+    slide_text = _coerce_text_list(raw_page.get("slideText") or raw_page.get("text") or [])
+    speaker_notes = str(raw_page.get("speakerNotes") or raw_page.get("notes") or "")
+    image_descriptions = _coerce_text_list(raw_page.get("imageDescriptions") or [])
+    transcript_window = [
+        {
+            "chunkId": str(chunk.id),
+            "startedAtMs": chunk.chunk_started_at_ms,
+            "endedAtMs": chunk.chunk_ended_at_ms,
+            "text": chunk.transcript,
+        }
+        for chunk in transcript_chunks
+    ]
+    timing_goal_seconds = build_data.timingGoal.minutes * 60 + build_data.timingGoal.seconds
+
+    return {
+        "model": model,
+        "deck": {
+            "id": str(presentation.id),
+            "title": presentation.title,
+        },
+        "slide": {
+            "id": str(slide.id),
+            "number": slide.slide_index + 1,
+            "title": raw_page.get("title") or f"Slide {slide.slide_index + 1}",
+            "slideText": slide_text,
+            "speakerNotes": speaker_notes,
+            "imageDescriptions": image_descriptions,
+            "visualElementCount": len(raw_page.get("pageElements", [])),
+        },
+        "neighborSlides": _build_neighbor_slide_context(presentation, slide),
+        "goals": [
+            {
+                "id": item.id,
+                "text": item.text,
+                "priority": item.priority,
+                "category": item.category,
+                "completed": item.completed,
+                "evidence": item.evidence,
+            }
+        for item in sorted(
+            build_data.priorityItems,
+            key=lambda priority_item: priority_item.priority,
+        )
+        ],
+        "accessibilityGoals": [
+            {
+                "id": check.id,
+                "label": check.label,
+                "enabled": check.enabled,
+                "severity": check.severity,
+                "status": check.status,
+                "evidence": check.evidence,
+            }
+            for check in build_data.accessibilityChecks
+        ],
+        "painPoints": [
+            {
+                "label": pain_point.label,
+                "severity": pain_point.severity,
+                "details": pain_point.details,
+            }
+            for pain_point in slide.pain_points
+        ],
+        "timingGoalMs": timing_goal_seconds * 1000,
+        "elapsedMs": transcript_chunks[-1].chunk_ended_at_ms,
+        "transcriptWindow": transcript_window,
+    }
+
+
+def _build_builder_schema_context(
+    *,
+    presentation: Presentation,
+    slide: PresentationSlide,
+    speaker_notes_override: str | None,
+    model: str | None,
+) -> dict:
+    raw_page = _ensure_readable_slide_context(slide)
+    speaker_notes = (
+        speaker_notes_override
+        if speaker_notes_override is not None
+        else str(raw_page.get("speakerNotes") or raw_page.get("notes") or "")
+    )
+    current_slide = _to_builder_slide(slide)
+
+    return {
+        "model": model,
+        "deck": {
+            "id": str(presentation.id),
+            "title": presentation.title,
+        },
+        "slide": {
+            "id": str(slide.id),
+            "number": slide.slide_index + 1,
+            "title": raw_page.get("title") or f"Slide {slide.slide_index + 1}",
+            "slideText": _coerce_text_list(raw_page.get("slideText") or raw_page.get("text") or []),
+            "speakerNotes": speaker_notes,
+            "imageDescriptions": _coerce_text_list(raw_page.get("imageDescriptions") or []),
+            "visualElementCount": len(raw_page.get("pageElements", [])),
+        },
+        "neighborSlides": _build_neighbor_slide_context(presentation, slide),
+        "existingBuilderSchema": current_slide.buildData.model_dump(mode="python"),
+        "painPoints": [
+            {
+                "label": pain_point.label,
+                "severity": pain_point.severity,
+                "details": pain_point.details,
+            }
+            for pain_point in slide.pain_points
+        ],
+    }
+
+
+def _normalize_feedback_decision(
+    *,
+    raw_decision: dict,
+    build_data: BuilderSlideData,
+    elapsed_ms: int,
+) -> dict:
+    priority_ids = {item.id for item in build_data.priorityItems}
+    accessibility_ids = {check.id for check in build_data.accessibilityChecks}
+    already_completed = {item.id for item in build_data.priorityItems if item.completed}
+
+    goal_updates = []
+    for item in raw_decision.get("goalUpdates", []):
+        if not isinstance(item, dict):
+            continue
+        item_id = str(item.get("id", "")).strip()
+        if item_id not in priority_ids:
+            continue
+        completed = bool(item.get("completed", False)) or item_id in already_completed
+        if not completed:
+            continue
+        goal_updates.append(
+            {
+                "id": item_id,
+                "completed": completed,
+                "evidence": str(item.get("evidence", "")).strip()[:500],
+                "confidence": _clamp_confidence(item.get("confidence")),
+            }
+        )
+
+    for item_id in already_completed:
+        if not any(update["id"] == item_id for update in goal_updates):
+            goal_updates.append(
+                {
+                    "id": item_id,
+                    "completed": True,
+                    "evidence": "",
+                    "confidence": 1.0,
+                }
+            )
+
+    accessibility_updates = []
+    for item in raw_decision.get("accessibilityUpdates", []):
+        if not isinstance(item, dict):
+            continue
+        item_id = str(item.get("id", "")).strip()
+        if item_id not in accessibility_ids:
+            continue
+        status = str(item.get("status", "pending")).strip().lower()
+        if status not in {"pending", "satisfied", "attention"}:
+            status = "pending"
+        accessibility_updates.append(
+            {
+                "id": item_id,
+                "status": status,
+                "evidence": str(item.get("evidence", "")).strip()[:500],
+                "confidence": _clamp_confidence(item.get("confidence")),
+            }
+        )
+
+    timing_goal_ms = (build_data.timingGoal.minutes * 60 + build_data.timingGoal.seconds) * 1000
+    raw_timing = raw_decision.get("timing") if isinstance(raw_decision.get("timing"), dict) else {}
+    timing_status = str(raw_timing.get("status", "unknown")).strip().lower()
+    if timing_status not in {"on_track", "over_time", "under_time", "unknown"}:
+        timing_status = "unknown"
+
+    frontend_updates = raw_decision.get("frontendUpdates", [])
+    if not isinstance(frontend_updates, list):
+        frontend_updates = []
+    frontend_updates = _normalize_frontend_updates(
+        frontend_updates=frontend_updates,
+        goal_updates=goal_updates,
+        accessibility_updates=accessibility_updates,
+        already_completed=already_completed,
+    )
+
+    return {
+        "summary": str(raw_decision.get("summary", "")).strip()[:500],
+        "goalUpdates": goal_updates,
+        "accessibilityUpdates": accessibility_updates,
+        "timing": {
+            "elapsedMs": elapsed_ms,
+            "goalMs": timing_goal_ms,
+            "status": timing_status,
+            "message": str(raw_timing.get("message", "")).strip()[:300],
+        },
+        "frontendUpdates": frontend_updates,
+    }
+
+
+def _normalize_generated_builder_schema(
+    *,
+    raw_schema: dict,
+    slide: PresentationSlide,
+) -> BuilderSlideData:
+    existing = _to_builder_slide(slide).buildData
+    raw_priority_items = raw_schema.get("priorityItems", [])
+    priority_items = []
+
+    if isinstance(raw_priority_items, list):
+        for index, item in enumerate(raw_priority_items[:5]):
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text", "")).strip()
+            if not text:
+                continue
+            priority_items.append(
+                BuilderPriorityItem(
+                    id=f"generated-goal-{index + 1}",
+                    text=text[:255],
+                    priority=len(priority_items) + 1,
+                    category=str(item.get("category") or "generated")[:80],
+                )
+            )
+
+    if not priority_items:
+        priority_items = existing.priorityItems
+
+    raw_timing = (
+        raw_schema.get("timingGoal") if isinstance(raw_schema.get("timingGoal"), dict) else {}
+    )
+    total_seconds = _normalize_generated_timing_seconds(raw_timing, fallback=existing.timingGoal)
+
+    return BuilderSlideData(
+        priorityItems=priority_items,
+        accessibilityChecks=_normalize_generated_accessibility_checks(
+            raw_schema=raw_schema,
+            existing_checks=existing.accessibilityChecks,
+        ),
+        timingGoal=BuilderTimingGoal(
+            minutes=total_seconds // 60,
+            seconds=total_seconds % 60,
+        ),
+    )
+
+
+def _normalize_generated_timing_seconds(
+    raw_timing: dict,
+    *,
+    fallback: BuilderTimingGoal,
+) -> int:
+    try:
+        minutes = int(raw_timing.get("minutes", fallback.minutes))
+        seconds = int(raw_timing.get("seconds", fallback.seconds))
+    except (TypeError, ValueError):
+        minutes = fallback.minutes
+        seconds = fallback.seconds
+
+    return min(5 * 60, max(20, minutes * 60 + seconds))
+
+
+def _normalize_generated_accessibility_checks(
+    *,
+    raw_schema: dict,
+    existing_checks: list[BuilderAccessibilityCheck],
+) -> list[BuilderAccessibilityCheck]:
+    existing_by_id = {check.id: check for check in existing_checks}
+    raw_checks = raw_schema.get("accessibilityChecks", [])
+    generated_checks = []
+
+    if isinstance(raw_checks, list):
+        for index, item in enumerate(raw_checks[:6]):
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "")).strip()
+            if not label:
+                continue
+            item_id = str(
+                item.get("id") or _slugify(label) or f"generated-accessibility-{index + 1}"
+            )
+            existing = existing_by_id.get(item_id)
+            status = str(item.get("status", "pending")).strip().lower()
+            if status not in {"pending", "attention"}:
+                status = "pending"
+            severity = str(
+                item.get("severity", existing.severity if existing else "medium")
+            ).lower()
+            if severity not in {"low", "medium", "high"}:
+                severity = "medium"
+            generated_checks.append(
+                BuilderAccessibilityCheck(
+                    id=item_id[:120],
+                    label=label[:120],
+                    enabled=bool(item.get("enabled", True)),
+                    severity=severity,
+                    status=status,
+                    evidence=str(item.get("evidence", "")).strip()[:500] or None,
+                )
+            )
+
+    if not generated_checks:
+        return existing_checks
+
+    return generated_checks
+
+
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug[:80]
+
+
+def _build_neighbor_slide_context(presentation: Presentation, slide: PresentationSlide) -> dict:
+    slides_by_index = {candidate.slide_index: candidate for candidate in presentation.slides}
+    return {
+        "previous": _summarize_neighbor_slide(slides_by_index.get(slide.slide_index - 1)),
+        "next": _summarize_neighbor_slide(slides_by_index.get(slide.slide_index + 1)),
+    }
+
+
+def _summarize_neighbor_slide(slide: PresentationSlide | None) -> dict | None:
+    if slide is None:
+        return None
+
+    raw_page = _ensure_readable_slide_context(slide)
+    return {
+        "number": slide.slide_index + 1,
+        "title": raw_page.get("title") or f"Slide {slide.slide_index + 1}",
+        "slideText": _coerce_text_list(raw_page.get("slideText") or raw_page.get("text") or [])[
+            :5
+        ],
+    }
+
+
+def _ensure_readable_slide_context(slide: PresentationSlide) -> dict:
+    raw_page = slide.raw_page or {}
+    if raw_page.get("slideText") is not None and raw_page.get("speakerNotes") is not None:
+        return raw_page
+    return _add_readable_slide_context(raw_page, slide_index=slide.slide_index)
+
+
+def _coerce_text_list(value) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [str(item)[:500] for item in value if str(item).strip()]
+    return []
+
+
+def _normalize_frontend_updates(
+    *,
+    frontend_updates: list,
+    goal_updates: list[dict],
+    accessibility_updates: list[dict],
+    already_completed: set[str],
+) -> list[dict]:
+    canonical_updates: list[dict] = [
+        {
+            "kind": "goal",
+            "id": update["id"],
+            "action": "goal_completed",
+            "message": "Goal reached.",
+        }
+        for update in goal_updates
+        if update["completed"] and update["id"] not in already_completed
+    ]
+
+    for update in accessibility_updates:
+        if update["status"] == "pending":
+            continue
+        canonical_updates.append(
+            {
+                "kind": "accessibility",
+                "id": update["id"],
+                "action": f"accessibility_{update['status']}",
+                "message": update["evidence"] or f"Accessibility check {update['status']}.",
+            }
+        )
+
+    for update in frontend_updates:
+        if not isinstance(update, dict) or not isinstance(update.get("kind"), str):
+            continue
+        if update.get("kind") == "goal":
+            continue
+        canonical_updates.append(
+            {
+                "kind": str(update.get("kind", "log"))[:40],
+                "id": str(update.get("id", ""))[:120] or None,
+                "action": str(update.get("action", "update"))[:120],
+                "message": str(update.get("message", ""))[:300],
+            }
+        )
+
+    return canonical_updates[:12]
+
+
+def _apply_feedback_decision_to_slide(
+    *,
+    session,
+    slide: PresentationSlide,
+    build_data: BuilderSlideData,
+    decision: dict,
+) -> None:
+    goal_updates_by_id = {update["id"]: update for update in decision["goalUpdates"]}
+    accessibility_updates_by_id = {
+        update["id"]: update for update in decision["accessibilityUpdates"]
+    }
+    existing_priority_data_by_id = {
+        str(item.id): dict(item.extra_data or {}) for item in slide.priority_items
+    }
+
+    slide.priority_items.clear()
+    session.flush()
+    slide.priority_items = [
+        SlidePriorityItem(
+            priority_rank=index + 1,
+            title=item.text,
+            extra_data={
+                "category": item.category,
+                "completed": _resolve_completed(
+                    item=item,
+                    update=goal_updates_by_id.get(item.id),
+                    existing_data=existing_priority_data_by_id.get(item.id, {}),
+                ),
+                "completedAtMs": _resolve_completed_at_ms(
+                    item=item,
+                    update=goal_updates_by_id.get(item.id),
+                    existing_data=existing_priority_data_by_id.get(item.id, {}),
+                    elapsed_ms=decision["timing"]["elapsedMs"],
+                ),
+                "evidence": goal_updates_by_id.get(item.id, {}).get("evidence")
+                or item.evidence
+                or existing_priority_data_by_id.get(item.id, {}).get("evidence"),
+            },
+        )
+        for index, item in enumerate(
+            sorted(build_data.priorityItems, key=lambda priority_item: priority_item.priority)
+        )
+    ]
+
+    raw_page = dict(slide.raw_page or {})
+    raw_page["builderAccessibilityChecks"] = [
+        {
+            **check.model_dump(mode="python"),
+            "status": accessibility_updates_by_id.get(check.id, {}).get("status", check.status),
+            "evidence": accessibility_updates_by_id.get(check.id, {}).get(
+                "evidence", check.evidence
+            ),
+            "updatedAtMs": decision["timing"]["elapsedMs"]
+            if check.id in accessibility_updates_by_id
+            else check.updatedAtMs,
+        }
+        for check in build_data.accessibilityChecks
+    ]
+    raw_page["lastFeedbackDecision"] = {
+        "summary": decision["summary"],
+        "frontendUpdates": decision["frontendUpdates"],
+        "timing": decision["timing"],
+    }
+    slide.raw_page = raw_page
+
+
+def _resolve_completed(
+    *,
+    item: BuilderPriorityItem,
+    update: dict | None,
+    existing_data: dict,
+) -> bool:
+    return bool(
+        existing_data.get("completed", False) or item.completed or (update or {}).get("completed")
+    )
+
+
+def _resolve_completed_at_ms(
+    *,
+    item: BuilderPriorityItem,
+    update: dict | None,
+    existing_data: dict,
+    elapsed_ms: int,
+):
+    if existing_data.get("completedAtMs") is not None:
+        return existing_data.get("completedAtMs")
+    if item.completedAtMs is not None:
+        return item.completedAtMs
+    if update and update.get("completed"):
+        return elapsed_ms
+    return None
+
+
+def _clamp_confidence(value) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(1.0, confidence))
 
 
 def _default_accessibility_checks() -> list[BuilderAccessibilityCheck]:

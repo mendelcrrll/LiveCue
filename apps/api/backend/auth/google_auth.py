@@ -13,6 +13,7 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 GOOGLE_SLIDES_READONLY_SCOPE = "https://www.googleapis.com/auth/presentations.readonly"
+GOOGLE_SLIDES_SCOPE = "https://www.googleapis.com/auth/presentations"
 
 
 @dataclass(frozen=True, slots=True)
