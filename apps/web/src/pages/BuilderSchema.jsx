@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import AutoFixHighOutlinedIcon from '@mui/icons-material/AutoFixHighOutlined';
 import PresentToAllOutlinedIcon from '@mui/icons-material/PresentToAllOutlined';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import Alert from '@mui/material/Alert';
@@ -62,8 +63,17 @@ function BuilderSchema() {
   const [activeSlideId, setActiveSlideId] = useState(null);
   const [navigatorWidth, setNavigatorWidth] = useState(360);
   const [isLoading, setIsLoading] = useState(true);
+  const [isGeneratingBuilderSchema, setIsGeneratingBuilderSchema] = useState(false);
+  const [deckGenerationProgress, setDeckGenerationProgress] = useState({
+    completed: 0,
+    total: 0,
+  });
+  const [generatingSlideSchemaId, setGeneratingSlideSchemaId] = useState(null);
+  const [isRefreshingContext, setIsRefreshingContext] = useState(false);
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [dirtySlideIds, setDirtySlideIds] = useState(() => new Set());
+  const [dirtyNoteSlideIds, setDirtyNoteSlideIds] = useState(() => new Set());
   const [error, setError] = useState('');
   const [saveError, setSaveError] = useState('');
   const panelGridRef = useRef(null);
@@ -107,6 +117,7 @@ function BuilderSchema() {
         });
         setActiveSlideId(firstSlide?.slideId ?? null);
         setDirtySlideIds(new Set());
+        setDirtyNoteSlideIds(new Set());
         setSaveError('');
       } catch (loadError) {
         setError(
@@ -123,7 +134,7 @@ function BuilderSchema() {
   }, [deckId]);
 
   useEffect(() => {
-    if (dirtySlideIds.size === 0) {
+    if (dirtySlideIds.size === 0 && dirtyNoteSlideIds.size === 0) {
       return undefined;
     }
 
@@ -138,7 +149,7 @@ function BuilderSchema() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [dirtySlideIds.size]);
+  }, [dirtySlideIds.size, dirtyNoteSlideIds.size]);
 
   useEffect(() => {
     const panelGrid = panelGridRef.current;
@@ -210,6 +221,178 @@ function BuilderSchema() {
     setSaveError('');
   }
 
+  function handleUpdateSlideNotes(slideId, speakerNotes) {
+    setPresentationData((currentData) => {
+      if (!currentData) {
+        return currentData;
+      }
+
+      return {
+        ...currentData,
+        slides: currentData.slides.map((slide) =>
+          slide.slideId === slideId
+            ? {
+                ...slide,
+                speakerNotes,
+              }
+            : slide
+        ),
+      };
+    });
+
+    setDirtyNoteSlideIds((currentSlideIds) => new Set(currentSlideIds).add(slideId));
+    setSaveError('');
+  }
+
+  async function handleSaveSlideNotes(slideId) {
+    const slide = presentationData?.slides.find((candidate) => candidate.slideId === slideId);
+
+    if (!slide || isSavingNotes) {
+      return;
+    }
+
+    try {
+      setIsSavingNotes(true);
+      setSaveError('');
+
+      const savedSlide = await PresentationBuilderService.updateSlideNotes(
+        deckId,
+        slideId,
+        slide.speakerNotes ?? ''
+      );
+
+      setPresentationData((currentData) => {
+        if (!currentData) {
+          return currentData;
+        }
+
+        return {
+          ...currentData,
+          slides: currentData.slides.map((currentSlide) =>
+            currentSlide.slideId === savedSlide.slideId ? savedSlide : currentSlide
+          ),
+        };
+      });
+      setDirtyNoteSlideIds((currentSlideIds) => {
+        const nextSlideIds = new Set(currentSlideIds);
+        nextSlideIds.delete(slideId);
+        return nextSlideIds;
+      });
+    } catch (saveNotesError) {
+      setSaveError(
+        saveNotesError instanceof Error
+          ? saveNotesError.message
+          : 'Unable to save speaker notes to Google.'
+      );
+    } finally {
+      setIsSavingNotes(false);
+    }
+  }
+
+  async function handleGenerateBuilderSchema() {
+    if (!presentationData?.slides.length || isGeneratingBuilderSchema) {
+      return;
+    }
+
+    try {
+      setIsGeneratingBuilderSchema(true);
+      setDeckGenerationProgress({
+        completed: 0,
+        total: presentationData.slides.length,
+      });
+      setSaveError('');
+
+      const generatedSlides = [];
+
+      for (const slide of presentationData.slides) {
+        const generatedBuildData = await PresentationBuilderService.generateSlideBuildData(
+          deckId,
+          slide.slideId,
+          {
+            speakerNotes: slide.speakerNotes ?? '',
+          }
+        );
+
+        generatedSlides.push({
+          slideId: slide.slideId,
+          buildData: generatedBuildData,
+        });
+        setDeckGenerationProgress({
+          completed: generatedSlides.length,
+          total: presentationData.slides.length,
+        });
+      }
+
+      const generatedBySlideId = new Map(
+        generatedSlides.map((slide) => [slide.slideId, slide.buildData])
+      );
+
+      setPresentationData((currentData) => {
+        if (!currentData) {
+          return currentData;
+        }
+
+        return {
+          ...currentData,
+          slides: currentData.slides.map((slide) => ({
+            ...slide,
+            buildData: generatedBySlideId.get(slide.slideId) ?? slide.buildData,
+          })),
+        };
+      });
+
+      generatedSlides.forEach((slide) => {
+        dirtyVersionsRef.current[slide.slideId] =
+          (dirtyVersionsRef.current[slide.slideId] ?? 0) + 1;
+      });
+      setDirtySlideIds((currentSlideIds) => {
+        const nextSlideIds = new Set(currentSlideIds);
+        generatedSlides.forEach((slide) => nextSlideIds.add(slide.slideId));
+        return nextSlideIds;
+      });
+    } catch (generateError) {
+      setSaveError(
+        generateError instanceof Error
+          ? generateError.message
+          : 'Unable to generate builder schema from notes.'
+      );
+    } finally {
+      setIsGeneratingBuilderSchema(false);
+      setDeckGenerationProgress({ completed: 0, total: 0 });
+    }
+  }
+
+  async function handleGenerateSlideSchema(slideId) {
+    const slide = presentationData?.slides.find((candidate) => candidate.slideId === slideId);
+
+    if (!slide || generatingSlideSchemaId) {
+      return;
+    }
+
+    try {
+      setGeneratingSlideSchemaId(slideId);
+      setSaveError('');
+
+      const generatedBuildData = await PresentationBuilderService.generateSlideBuildData(
+        deckId,
+        slideId,
+        {
+          speakerNotes: slide.speakerNotes ?? '',
+        }
+      );
+
+      handleUpdateSlide(slideId, generatedBuildData);
+    } catch (generateError) {
+      setSaveError(
+        generateError instanceof Error
+          ? generateError.message
+          : 'Unable to generate builder schema from notes.'
+      );
+    } finally {
+      setGeneratingSlideSchemaId(null);
+    }
+  }
+
   async function handleSaveBuilderSchema() {
     if (!presentationData || dirtySlideIds.size === 0 || isSaving) {
       return;
@@ -270,8 +453,45 @@ function BuilderSchema() {
     }
   }
 
+  async function handleRefreshGoogleContext() {
+    if (!deckId || isRefreshingContext || isSaving) {
+      return;
+    }
+
+    if (dirtySlideIds.size > 0 || dirtyNoteSlideIds.size > 0) {
+      setSaveError('Save builder schema and note changes before refreshing Google notes.');
+      return;
+    }
+
+    try {
+      setIsRefreshingContext(true);
+      setSaveError('');
+
+      const data = await PresentationBuilderService.refreshGoogleContext(deckId);
+      const slides = sortSlidesByNumber(Array.isArray(data.slides) ? data.slides : []);
+      const nextActiveSlideId = slides.some((slide) => slide.slideId === activeSlideId)
+        ? activeSlideId
+        : slides[0]?.slideId ?? null;
+
+      setPresentationData({
+        ...data,
+        slides,
+      });
+      setActiveSlideId(nextActiveSlideId);
+      setDirtyNoteSlideIds(new Set());
+    } catch (refreshError) {
+      setSaveError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : 'Unable to refresh Google slide notes.'
+      );
+    } finally {
+      setIsRefreshingContext(false);
+    }
+  }
+
   function confirmDiscardUnsavedChanges() {
-    if (dirtySlideIds.size === 0) {
+    if (dirtySlideIds.size === 0 && dirtyNoteSlideIds.size === 0) {
       return true;
     }
 
@@ -416,10 +636,16 @@ function BuilderSchema() {
               </Typography>
 
               <Typography variant="caption" sx={{ color: 'var(--text-muted)' }}>
-                {isSaving
+                {isRefreshingContext
+                  ? 'Refreshing Google notes...'
+                  : isGeneratingBuilderSchema
+                    ? `Generating deck schema ${deckGenerationProgress.completed}/${deckGenerationProgress.total}`
+                  : isSaving
                   ? 'Saving...'
                   : dirtySlideIds.size > 0
                     ? `${dirtySlideIds.size} slide${dirtySlideIds.size === 1 ? '' : 's'} with unsaved changes`
+                    : dirtyNoteSlideIds.size > 0
+                      ? `${dirtyNoteSlideIds.size} slide${dirtyNoteSlideIds.size === 1 ? '' : 's'} with unsaved note changes`
                     : 'All changes saved'}
               </Typography>
             </Box>
@@ -428,8 +654,26 @@ function BuilderSchema() {
               direction="row"
               spacing={1}
               justifyContent="flex-end"
+              alignItems="center"
               sx={{ flexShrink: 0, ml: 'auto' }}
             >
+              {isGeneratingBuilderSchema && (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    mr: 1,
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  <CircularProgress size={20} color="inherit" />
+                  <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                    {deckGenerationProgress.completed}/{deckGenerationProgress.total}
+                  </Typography>
+                </Box>
+              )}
+
               <Tooltip
                 title={dirtySlideIds.size > 0 ? 'Save builder schema' : 'No changes to save'}
                 placement="bottom"
@@ -443,6 +687,31 @@ function BuilderSchema() {
                     sx={builderToolbarButtonSx}
                   >
                     <SaveOutlinedIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+
+              <Tooltip
+                title={
+                  isGeneratingBuilderSchema
+                    ? 'Generating builder schema for deck'
+                    : 'Generate builder schema for full deck'
+                }
+                placement="bottom"
+                arrow
+              >
+                <span>
+                  <IconButton
+                    aria-label="generate builder schema for slide deck"
+                    onClick={handleGenerateBuilderSchema}
+                    disabled={!presentationData.slides.length || isGeneratingBuilderSchema}
+                    sx={builderToolbarButtonSx}
+                  >
+                    {isGeneratingBuilderSchema ? (
+                      <CircularProgress size={22} color="inherit" />
+                    ) : (
+                      <AutoFixHighOutlinedIcon fontSize="small" />
+                    )}
                   </IconButton>
                 </span>
               </Tooltip>
@@ -526,7 +795,22 @@ function BuilderSchema() {
               }}
             />
 
-            <SlideBuilderPanel slide={activeSlide} onUpdateSlide={handleUpdateSlide} />
+            <SlideBuilderPanel
+              slide={activeSlide}
+              onUpdateSlide={handleUpdateSlide}
+              onRefreshGoogleContext={handleRefreshGoogleContext}
+              onGenerateSlideSchema={handleGenerateSlideSchema}
+              onUpdateSlideNotes={handleUpdateSlideNotes}
+              onSaveSlideNotes={handleSaveSlideNotes}
+              canRefreshGoogleContext={
+                dirtySlideIds.size === 0 && dirtyNoteSlideIds.size === 0 && !isSaving
+              }
+              isRefreshingGoogleContext={isRefreshingContext}
+              canSaveSlideNotes={!isSaving && !isRefreshingContext}
+              isSavingSlideNotes={isSavingNotes}
+              hasUnsavedSlideNotes={Boolean(activeSlide && dirtyNoteSlideIds.has(activeSlide.slideId))}
+              isGeneratingSlideSchema={activeSlide?.slideId === generatingSlideSchemaId}
+            />
           </Box>
         </Stack>
       </Box>

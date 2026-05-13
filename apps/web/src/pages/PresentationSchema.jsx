@@ -20,7 +20,7 @@ const DRAWER_WIDTH = 320;
 const SLIDE_PANEL_MIN_WIDTH = 320;
 const SLIDE_PANEL_MAX_WIDTH = 760;
 const FEEDBACK_PANEL_MIN_WIDTH = 420;
-const TRANSCRIPTION_CHUNK_MS = 10000;
+const TRANSCRIPTION_CHUNK_MS = 5000;
 
 function getClampedSlidePanelWidth(width, gridWidth) {
   const maxWidth = Math.max(
@@ -64,6 +64,8 @@ function PresentationSchemaPage() {
   const lastChunkEndedAtMsRef = useRef(0);
   const activeDeckIdRef = useRef('');
   const activeSlideIdRef = useRef('');
+  const presentationDataRef = useRef(null);
+  const feedbackDecisionStateRef = useRef({ inFlight: false, pending: null });
 
   useEffect(() => {
     async function loadWorkflowTree() {
@@ -146,6 +148,10 @@ function PresentationSchemaPage() {
   useEffect(() => {
     activeDeckIdRef.current = activeDeckId ?? '';
   }, [activeDeckId]);
+
+  useEffect(() => {
+    presentationDataRef.current = presentationData;
+  }, [presentationData]);
 
   useEffect(() => {
     activeSlideIdRef.current = activeSlideId ?? '';
@@ -561,7 +567,33 @@ function PresentationSchemaPage() {
   }
 
   async function requestFeedbackDecision({ presentationId, slideId }) {
-    const slide = presentationData?.slides.find((candidate) => candidate.slideId === slideId);
+    const decisionState = feedbackDecisionStateRef.current;
+
+    if (decisionState.inFlight) {
+      decisionState.pending = { presentationId, slideId };
+      return;
+    }
+
+    decisionState.inFlight = true;
+
+    try {
+      let nextRequest = { presentationId, slideId };
+
+      while (nextRequest) {
+        const currentRequest = nextRequest;
+
+        decisionState.pending = null;
+        await runFeedbackDecision(currentRequest);
+        nextRequest = decisionState.pending;
+      }
+    } finally {
+      decisionState.inFlight = false;
+    }
+  }
+
+  async function runFeedbackDecision({ presentationId, slideId }) {
+    const currentPresentationData = presentationDataRef.current;
+    const slide = currentPresentationData?.slides.find((candidate) => candidate.slideId === slideId);
 
     if (!slide?.buildData) {
       return;

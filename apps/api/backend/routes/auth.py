@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from fastapi import APIRouter, Cookie, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
-from backend.auth.google_auth import GoogleAuthService, GoogleTokenResponse
+from backend.auth.google_auth import GOOGLE_SLIDES_SCOPE, GoogleAuthService, GoogleTokenResponse
 from backend.config import get_settings
 
 
@@ -240,7 +240,7 @@ def google_login():
     _store_oauth_state(state_value)
     login_url = service.build_login_url(
         state=state_value,
-        scopes=["https://www.googleapis.com/auth/presentations.readonly"],
+        scopes=[GOOGLE_SLIDES_SCOPE],
         access_type="offline",
         prompt="select_account",
         include_granted_scopes=True,

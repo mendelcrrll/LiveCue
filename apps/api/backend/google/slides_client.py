@@ -39,3 +39,16 @@ class GoogleSlidesClient:
             resp = await client.get(url, headers=headers, params=params)
             resp.raise_for_status()
             return resp.json()
+
+    async def batch_update_presentation(
+        self,
+        presentation_id: str,
+        requests: list[Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        url = f"https://slides.googleapis.com/v1/presentations/{presentation_id}:batchUpdate"
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            resp = await client.post(url, headers=headers, json={"requests": requests})
+            resp.raise_for_status()
+            return resp.json()

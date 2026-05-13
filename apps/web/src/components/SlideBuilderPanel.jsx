@@ -3,6 +3,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import AccessibilityChecklistEditor from './AccessibilityChecklistEditor';
 import PriorityQueueEditor from './PriorityQueueEditor';
+import SlideNotesCard from './SlideNotesCard';
 import TimingGoalEditor from './TimingGoalEditor';
 
 const builderPanelControlSx = {
@@ -50,7 +51,20 @@ const builderPanelControlSx = {
   },
 };
 
-function SlideBuilderPanel({ slide, onUpdateSlide }) {
+function SlideBuilderPanel({
+  slide,
+  onUpdateSlide,
+  onUpdateSlideNotes,
+  onSaveSlideNotes,
+  onGenerateSlideSchema,
+  onRefreshGoogleContext,
+  canRefreshGoogleContext = true,
+  isRefreshingGoogleContext = false,
+  canSaveSlideNotes = true,
+  isSavingSlideNotes = false,
+  hasUnsavedSlideNotes = false,
+  isGeneratingSlideSchema = false,
+}) {
   if (!slide) {
     return (
       <Paper
@@ -86,9 +100,33 @@ function SlideBuilderPanel({ slide, onUpdateSlide }) {
           backgroundColor: 'var(--surface-raised, #ffffff)',
         }}
       >
+        <SlideNotesCard
+          notes={slide.speakerNotes}
+          onChangeNotes={(speakerNotes) => onUpdateSlideNotes?.(slide.slideId, speakerNotes)}
+          onSaveNotes={() => onSaveSlideNotes?.(slide.slideId)}
+          onGenerateSlideSchema={() => onGenerateSlideSchema?.(slide.slideId)}
+          onRefreshGoogleContext={onRefreshGoogleContext}
+          canRefreshGoogleContext={canRefreshGoogleContext}
+          isRefreshingGoogleContext={isRefreshingGoogleContext}
+          canSaveNotes={canSaveSlideNotes}
+          isSavingNotes={isSavingSlideNotes}
+          hasUnsavedNotes={hasUnsavedSlideNotes}
+          isGeneratingSlideSchema={isGeneratingSlideSchema}
+        />
+      </Paper>
+
+      <Paper
+        elevation={0}
+        sx={{
+          p: 3,
+          border: '1px solid var(--border, #e5e4e7)',
+          backgroundColor: 'var(--surface-raised, #ffffff)',
+        }}
+      >
         <PriorityQueueEditor
           items={slide.buildData?.priorityItems ?? []}
           onChange={(priorityItems) => updateBuildData({ priorityItems })}
+          isGenerating={isGeneratingSlideSchema}
         />
       </Paper>
 
