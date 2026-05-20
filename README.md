@@ -2,8 +2,6 @@
 
 RT Presentation Feedback is a local-first demo app for helping presenters prepare and deliver Google Slides presentations with private, real-time feedback.
 
-The current branch, `test-section`, contains the latest demo flow. Treat it as the working reference for the current product state until the team decides how to merge or rename it.
-
 ## Current Product State
 
 The app currently supports:
