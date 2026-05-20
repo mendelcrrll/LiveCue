@@ -18,6 +18,13 @@ async function updateSlideNotes(deckId, slideId, speakerNotes) {
   );
 }
 
+async function updateSlideDemoTranscript(deckId, slideId, demoTranscript, { source = 'manual' } = {}) {
+  return requestJson(
+    `/api/presentations/${deckId}/builder-schema/slides/${slideId}/demo-transcript`,
+    jsonRequestOptions('PUT', { demoTranscript, source })
+  );
+}
+
 async function generateFeedbackDecision(deckId, slideId, { buildData, windowSize = 12, model } = {}) {
   return requestJson(
     `/api/presentations/${deckId}/slides/${slideId}/feedback-decision`,
@@ -25,10 +32,10 @@ async function generateFeedbackDecision(deckId, slideId, { buildData, windowSize
   );
 }
 
-async function generateSlideBuildData(deckId, slideId, { speakerNotes, model } = {}) {
+async function generateSlideBuildData(deckId, slideId, { speakerNotes, demoTranscript, model } = {}) {
   return requestJson(
     `/api/presentations/${deckId}/builder-schema/slides/${slideId}/generate`,
-    jsonRequestOptions('POST', { speakerNotes, model })
+    jsonRequestOptions('POST', { speakerNotes, demoTranscript, model })
   );
 }
 
@@ -45,5 +52,6 @@ export default {
   getSlideDeckBuild,
   refreshGoogleContext,
   updateSlideBuildData,
+  updateSlideDemoTranscript,
   updateSlideNotes,
 };

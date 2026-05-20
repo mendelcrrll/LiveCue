@@ -2,11 +2,28 @@
 
 This package is reserved for reusable prompt assets and evaluation rubrics.
 
-Planned prompt categories:
+## Current Source Of Truth
 
-- goal tracking
-- accessibility review
-- jargon detection and explanation checks
-- session summary generation
+The current prompts live in:
 
-Keeping prompts here instead of scattering them through service code will make iteration, testing, and future local-model migration much easier.
+```text
+apps/api/backend/ai/model_client.py
+```
+
+That file contains:
+
+- Builder schema generation prompt.
+- Live feedback decision prompt.
+- JSON parsing and OpenAI-compatible call wrapper.
+
+## Candidate Future Contents
+
+- Versioned prompt files for builder generation.
+- Versioned prompt files for feedback decisions.
+- Small fixture contexts for prompt testing.
+- Expected JSON output examples.
+- Rubrics for evaluating goal completion, accessibility checks, and timing.
+
+## Extraction Guidance
+
+Move prompts here when prompt iteration becomes frequent enough that editing backend code is slowing the team down. Until then, keeping prompts near `ModelClient` makes the current demo path easier to follow.

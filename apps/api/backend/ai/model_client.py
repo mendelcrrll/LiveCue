@@ -21,9 +21,10 @@ FEEDBACK_PROMPT = dedent(
 
     Decide whether the presenter has satisfied any configured goals for the
     current slide, using the transcript window plus the slide text, speaker
-    notes, neighboring slide summaries, configured goals, and accessibility
-    checks. The transcript window grows as more speech arrives, so leave a goal
-    incomplete unless there is clear evidence in the provided transcript.
+    notes, optional demo transcript, neighboring slide summaries, configured
+    goals, and accessibility checks. The transcript window grows as more speech
+    arrives, so leave a goal incomplete unless there is clear evidence in the
+    provided transcript.
 
     Also evaluate enabled accessibility goals. Mark them:
     - "satisfied" when the transcript clearly shows the presenter did it.
@@ -79,9 +80,9 @@ BUILDER_SCHEMA_PROMPT = dedent(
     """
     You generate a slide-level builder schema for a presentation feedback app.
 
-    Use the slide title, slide text, speaker notes, image descriptions, nearby
-    slide summaries, and existing builder schema to infer what the presenter
-    should accomplish on this slide.
+    Use the slide title, slide text, speaker notes, optional demo transcript,
+    image descriptions, nearby slide summaries, and existing builder schema to
+    infer what the presenter should accomplish on this slide.
 
     Return JSON only. Do not wrap it in markdown.
 
@@ -112,6 +113,9 @@ BUILDER_SCHEMA_PROMPT = dedent(
     Rules:
     - Generate 3 to 5 concise presentation goals.
     - Goals should be observable from the presenter's speech.
+    - When a demo transcript is provided, treat it as the presenter's intended
+      live wording and prefer goals that capture important demo steps,
+      explanations, decisions, and transitions in that transcript.
     - Prefer goals that are implied by the notes over generic speaking advice.
     - Estimate timing from the amount and complexity of the content.
     - Keep timing between 20 seconds and 5 minutes.

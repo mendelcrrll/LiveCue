@@ -1,11 +1,78 @@
-# Environment Notes
+# Environment Configuration
 
-Use this folder for shared environment setup guidance.
+The backend reads environment variables from `apps/api/.env` through `backend/config.py`.
 
-Examples:
+Do not commit real `.env` files or secrets.
 
-- local development env requirements
-- sample env files that are safe to commit
-- deployment environment documentation
+## Minimal Local File
 
-Do not commit real secrets to this folder.
+Create `apps/api/.env`:
+
+```text
+API_ENV=development
+API_HOST=127.0.0.1
+API_PORT=8000
+
+DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:54332/postgres
+SUPABASE_URL=http://127.0.0.1:54331
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://127.0.0.1:8000/api/auth/google/callback
+FRONTEND_OAUTH_REDIRECT_URL=http://127.0.0.1:5173/
+
+OPENAI_API_KEY=
+LLM_PROVIDER=openai
+
+STT_PROVIDER=whisper
+WHISPER_BASE_URL=http://127.0.0.1:8081
+```
+
+## Required By Feature
+
+Basic API and seeded local data:
+
+- `DATABASE_URL`
+
+Google sign-in, import, thumbnail refresh, and notes writeback:
+
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI`
+- `FRONTEND_OAUTH_REDIRECT_URL`
+
+Builder schema generation and live feedback decisions:
+
+- `OPENAI_API_KEY`
+
+Demo transcript and live presentation transcription:
+
+- `WHISPER_BASE_URL`
+
+## Google OAuth Notes
+
+For local development, configure the Google OAuth app with:
+
+```text
+http://127.0.0.1:8000/api/auth/google/callback
+```
+
+The frontend OAuth redirect should usually be:
+
+```text
+http://127.0.0.1:5173/
+```
+
+If you use `localhost` instead of `127.0.0.1`, keep the backend CORS settings, Google redirect URI, and browser URL consistent.
+
+## Frontend Environment
+
+The web app can use `VITE_API_BASE_URL`.
+
+If unset, it defaults to:
+
+```text
+http://127.0.0.1:8000
+```

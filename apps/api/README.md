@@ -1,20 +1,50 @@
-# Backend
+# Backend API
 
-This workspace contains the Python FastAPI backend for RT Presentation Feedback.
+`apps/api` contains the FastAPI backend for RT Presentation Feedback.
+
+## Stack
+
+- FastAPI
+- SQLAlchemy
+- Pydantic / Pydantic Settings
+- Supabase local Postgres
+- httpx
+- LangChain OpenAI integration
+- Local `whisper.cpp` HTTP service for speech-to-text
 
 ## Structure
 
-- `backend/main.py`: FastAPI app entrypoint
-- `backend/routes`: HTTP endpoints used by the web app
-- `backend/schemas`: request and response models
-- `backend/config.py`: environment-based settings
-- `backend/database.py`: SQLAlchemy engine, base model, and sessions
-- `backend/persistence`: database models, repositories, and workflow tree persistence
-- `backend/google`: Google Slides API integration and Google payload ingestion
-- `backend/ai`: model integration placeholder for feedback generation
-- `backend/transcription`: ASR transcription placeholder
-- `backend/auth`: authentication placeholder
-- `supabase`: local Supabase config, migrations, SQL seed file, and mock seed script
+```text
+backend/
+  main.py                         FastAPI app, CORS, route registration, health check.
+  config.py                       Environment-backed settings from apps/api/.env.
+  database.py                     SQLAlchemy engine, base model, and sessions.
+  routes/
+    auth.py                       Google OAuth, session cookie, logout, debug/session endpoints.
+    google.py                     Direct authenticated Google presentation fetch.
+    presentations.py              Workflow tree, import, builder schema, generation, feedback decisions.
+    transcription.py              Audio transcription, live chunk persistence, cleanup.
+  schemas/
+    presentations.py              Pydantic request/response models for builder and feedback.
+    workflow.py                   Workflow node request/response models.
+  persistence/
+    models.py                     SQLAlchemy models.
+    workflow_tree.py              Workflow tree CRUD.
+    presentations.py              Presentation context helpers.
+  google/
+    slides_client.py              Google Slides HTTP client.
+    presentation_import.py        Google deck import flow.
+    presentation_ingest.py        Normalization into local persistence.
+    schemas.py                    Google payload schemas.
+  ai/
+    model_client.py               Builder schema and feedback prompts plus OpenAI JSON calls.
+  transcription/
+    asr_transcriber.py            Whisper HTTP client.
+supabase/
+  migrations/                     Local database schema.
+  seed.sql                        SQL seed support.
+  seed_mock_presentation.py       Mock presentation seed helper.
+```
 
 ## Setup
 
@@ -22,29 +52,19 @@ From `apps/api`:
 
 ```powershell
 python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -U pip
 .\.venv\Scripts\python.exe -m pip install -e .[dev]
 ```
 
-MacOS:
-``` 
-    cd apps/api
-    python3 -m venv .venv
-    source .venv/bin/activate
-    python -m pip install -U pip
-    python -m pip install -e ".[dev]"
-```
+Create `apps/api/.env`. See `infra/env/README.md` for the current variable list.
 
-## Run The Backend
-
-From `apps/api`:
+## Run
 
 ```powershell
+cd apps/api
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
 ```
-MacOS:
-```
-    python -m uvicorn backend.main:app --reload 
-```
+
 Health check:
 
 ```text
@@ -60,10 +80,10 @@ npx supabase start
 npx supabase db reset --local
 ```
 
-The backend defaults to the local Supabase Postgres URL:
+The backend default database URL is:
 
 ```text
-postgresql+psycopg://postgres:postgres@127.0.0.1:54322/postgres
+postgresql+psycopg://postgres:postgres@127.0.0.1:54332/postgres
 ```
 
 ## Seed Mock Data
@@ -74,20 +94,78 @@ From `apps/api`:
 .\.venv\Scripts\python.exe supabase\seed_mock_presentation.py
 ```
 
-## Current Endpoints
+## Current Endpoint Areas
+
+Health:
 
 - `GET /health`
+
+Auth:
+
+- `GET /api/auth/google/login`
+- `GET /api/auth/google/callback`
+- `GET /api/auth/session`
+- `GET /api/auth/debug/session`
+- `POST /api/auth/logout`
+
+Google:
+
+- `GET /api/google/presentations/{presentation_id}`
+
+Workflow and presentations:
+
 - `GET /api/presentations/tree`
-- `POST /api/presentations/import`
 - `POST /api/presentations/folders`
 - `POST /api/presentations/files`
 - `DELETE /api/presentations/nodes/{node_id}`
+- `POST /api/presentations/import`
+- `GET /api/presentations/{presentation_id}/builder-schema`
+- `PUT /api/presentations/{presentation_id}/builder-schema/slides/{slide_id}`
+- `PUT /api/presentations/{presentation_id}/builder-schema/slides/{slide_id}/notes`
+- `PUT /api/presentations/{presentation_id}/builder-schema/slides/{slide_id}/demo-transcript`
+- `POST /api/presentations/{presentation_id}/builder-schema/slides/{slide_id}/generate`
+- `POST /api/presentations/{presentation_id}/refresh-google-context`
+- `GET /api/presentations/{presentation_id}/slides/{slide_id}/thumbnail`
+- `POST /api/presentations/{presentation_id}/slides/{slide_id}/feedback-decision`
 
-The Google Slides API client is still a stub in `backend/google/slides_client.py`.
+Transcription:
 
-## Google OAuth
-test google auth login: http://127.0.0.1:8000/api/auth/google/login
-check session info: /api/auth/debug/session
-get slides: http://127.0.0.1:8000/api/google/presentations/<id>
+- `POST /api/transcription/transcribe`
+- `POST /api/transcription/chunks`
+- `DELETE /api/transcription/presentations/{presentation_id}/chunks`
 
+Detailed contract notes live in `docs/api-contracts.md`.
 
+## External Services
+
+Google OAuth and Slides:
+
+- Used for sign-in, deck import, thumbnail refresh, and speaker note writeback.
+- Requires Google client ID/secret/redirect URI in `apps/api/.env`.
+
+OpenAI:
+
+- Used by `ModelClient` for builder schema generation and live feedback decisions.
+- Requires `OPENAI_API_KEY`.
+- Default model in code is `gpt-4o-mini`.
+
+Whisper:
+
+- `ASRTranscriber` calls `POST {WHISPER_BASE_URL}/inference`.
+- Default base URL is `http://127.0.0.1:8081`.
+- The local demo stack runs this through Docker using `infra/docker/compose.whisper.yml`.
+
+## Checks
+
+```powershell
+cd apps/api
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m pytest
+```
+
+## Notes For Contributors
+
+- Keep provider details in `backend/google`, `backend/ai`, and `backend/transcription`.
+- Keep frontend-facing request/response shapes in `backend/schemas`.
+- `routes/presentations.py` is currently large because it owns several demo-critical flows. When refactoring, preserve endpoint behavior and move helpers into focused service modules.
+- Avoid committing `.env`, Supabase temp state, downloaded models, or generated local files.

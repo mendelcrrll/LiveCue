@@ -49,6 +49,7 @@ class BuilderSlide(BaseModel):
     title: str
     slideText: list[str]
     speakerNotes: str
+    demoTranscript: str = ""
     thumbnailUrl: str | None = None
     buildData: BuilderSlideData
 
@@ -67,8 +68,14 @@ class BuilderSlideNotesUpdateRequest(BaseModel):
     speakerNotes: str = Field(default="", max_length=20000)
 
 
+class BuilderSlideDemoTranscriptUpdateRequest(BaseModel):
+    demoTranscript: str = Field(default="", max_length=40000)
+    source: str = Field(default="manual", min_length=1, max_length=64)
+
+
 class BuilderSchemaGenerationRequest(BaseModel):
     speakerNotes: str | None = Field(default=None, max_length=20000)
+    demoTranscript: str | None = Field(default=None, max_length=40000)
     model: str | None = Field(default=None, min_length=1)
 
 

@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import FullscreenOutlinedIcon from '@mui/icons-material/FullscreenOutlined';
+import MenuOpenOutlinedIcon from '@mui/icons-material/MenuOpenOutlined';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
+import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import ButtonAppBar from '../components/AppBar';
 import FullPageSlide from '../components/FullPageSlide';
@@ -21,13 +25,16 @@ const SLIDE_PANEL_MIN_WIDTH = 320;
 const SLIDE_PANEL_MAX_WIDTH = 760;
 const FEEDBACK_PANEL_MIN_WIDTH = 420;
 const TRANSCRIPTION_CHUNK_MS = 5000;
+const PRESENTER_CHROME_STORAGE_KEY = 'presentation-schema:show-presenter-chrome';
+const FULLSCREEN_WORKSPACE_TOP_OFFSET = 32;
+const CHROME_WORKSPACE_TOP_OFFSET = 92;
 
 function getClampedSlidePanelWidth(width, gridWidth) {
   const maxWidth = Math.max(
     SLIDE_PANEL_MIN_WIDTH,
     Math.min(
       SLIDE_PANEL_MAX_WIDTH,
-      gridWidth * 0.4,
+      gridWidth * 0.5,
       gridWidth - FEEDBACK_PANEL_MIN_WIDTH - 36
     )
   );
@@ -44,15 +51,17 @@ function PresentationSchemaPage() {
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const [presentationData, setPresentationData] = useState(null);
   const [activeSlideId, setActiveSlideId] = useState('');
-  const [slidePanelWidth, setSlidePanelWidth] = useState(520);
+  const [slidePanelWidth, setSlidePanelWidth] = useState(640);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerPaused, setIsTimerPaused] = useState(true);
   const [isTranscriptionActive, setIsTranscriptionActive] = useState(false);
   const [isDeletingTranscripts, setIsDeletingTranscripts] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState('');
-  const [liveFeedbackEvents, setLiveFeedbackEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isPresenterChromeVisible, setIsPresenterChromeVisible] = useState(() =>
+    readPresenterChromePreference()
+  );
   const isSlideOnlyMode = searchParams.get('mode') === 'slide';
   const [initialSlideId] = useState(() => searchParams.get('slideId'));
   const panelGridRef = useRef(null);
@@ -82,6 +91,10 @@ function PresentationSchemaPage() {
 
     loadWorkflowTree();
   }, [deckId]);
+
+  useEffect(() => {
+    writePresenterChromePreference(isPresenterChromeVisible);
+  }, [isPresenterChromeVisible]);
 
   useEffect(() => {
     async function loadPresentationData() {
@@ -625,31 +638,6 @@ function PresentationSchemaPage() {
       });
     }
 
-    const nextEvents = Array.isArray(decision.frontendUpdates)
-      ? decision.frontendUpdates
-      : [];
-
-    if (decision.summary || nextEvents.length > 0) {
-      setLiveFeedbackEvents((events) =>
-        [
-          ...nextEvents.map((event) => ({
-            ...event,
-            createdAt: Date.now(),
-          })),
-          ...(decision.summary
-            ? [
-                {
-                  kind: 'log',
-                  action: 'summary',
-                  message: decision.summary,
-                  createdAt: Date.now(),
-                },
-              ]
-            : []),
-          ...events,
-        ].slice(0, 20)
-      );
-    }
   }
 
   async function deleteTranscriptsForActiveDeck({ keepalive = false, showErrors = true } = {}) {
@@ -745,21 +733,25 @@ function PresentationSchemaPage() {
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
-      <ButtonAppBar
-        drawerWidth={DRAWER_WIDTH}
-        sidebarOpen={sidebarOpen}
-        onMenuClick={() => setSidebarOpen((open) => !open)}
-        onHomeClick={handleNavigateHome}
-        onSelectNode={handleSelectWorkflowNode}
-        treeData={treeData}
-      />
-      <SideBar
-        drawerWidth={DRAWER_WIDTH}
-        open={sidebarOpen}
-        treeData={treeData}
-        selectedNodeId={selectedNodeId}
-        onSelectNode={handleSelectWorkflowNode}
-      />
+      {isPresenterChromeVisible && (
+        <>
+          <ButtonAppBar
+            drawerWidth={DRAWER_WIDTH}
+            sidebarOpen={sidebarOpen}
+            onMenuClick={() => setSidebarOpen((open) => !open)}
+            onHomeClick={handleNavigateHome}
+            onSelectNode={handleSelectWorkflowNode}
+            treeData={treeData}
+          />
+          <SideBar
+            drawerWidth={DRAWER_WIDTH}
+            open={sidebarOpen}
+            treeData={treeData}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={handleSelectWorkflowNode}
+          />
+        </>
+      )}
 
       <Box
         component="main"
@@ -767,9 +759,11 @@ function PresentationSchemaPage() {
           flexGrow: 1,
           minWidth: 0,
           height: '100vh',
-          pl: { xs: 2, sm: 2, md: 2 },
-          pr: { xs: 2, sm: 3, md: 4 },
-          pb: 2,
+          boxSizing: 'border-box',
+          pl: isPresenterChromeVisible ? { xs: 2, sm: 2, md: 2 } : { xs: 1.5, sm: 2 },
+          pr: isPresenterChromeVisible ? { xs: 2, sm: 3, md: 4 } : { xs: 1.5, sm: 2 },
+          pt: isPresenterChromeVisible ? 0 : { xs: 1.5, sm: 2 },
+          pb: isPresenterChromeVisible ? 2 : { xs: 1.5, sm: 2 },
           textAlign: 'left',
           overflow: { lg: 'hidden' },
           transition: theme.transitions.create(['padding'], {
@@ -778,7 +772,12 @@ function PresentationSchemaPage() {
           }),
         })}
       >
-        <Toolbar />
+        {isPresenterChromeVisible && <Toolbar />}
+
+        <PresenterChromeToggle
+          isVisible={isPresenterChromeVisible}
+          onToggle={() => setIsPresenterChromeVisible((visible) => !visible)}
+        />
 
         <PresenterWorkspace
           activeSlide={activeSlide}
@@ -793,8 +792,10 @@ function PresentationSchemaPage() {
           slidePanelMinWidth={SLIDE_PANEL_MIN_WIDTH}
           slidePanelWidth={slidePanelWidth}
           timerSeconds={timerSeconds}
+          topOffset={
+            isPresenterChromeVisible ? CHROME_WORKSPACE_TOP_OFFSET : FULLSCREEN_WORKSPACE_TOP_OFFSET
+          }
           transcriptionError={transcriptionError}
-          liveFeedbackEvents={liveFeedbackEvents}
           onDeleteTranscripts={() => deleteTranscriptsForActiveDeck()}
           onResetTimer={(nextTimerSeconds) => {
             setTimerSeconds(nextTimerSeconds);
@@ -818,6 +819,34 @@ async function getFirstPresentationId() {
   return findFirstPresentationId(tree);
 }
 
+function PresenterChromeToggle({ isVisible, onToggle }) {
+  return (
+    <Tooltip title={isVisible ? 'Hide navigation' : 'Show navigation'} placement="left" arrow>
+      <IconButton
+        aria-label={isVisible ? 'hide navigation' : 'show navigation'}
+        onClick={onToggle}
+        sx={(theme) => ({
+          position: 'fixed',
+          top: isVisible ? 72 : 12,
+          right: 16,
+          zIndex: theme.zIndex.drawer + 2,
+          width: 40,
+          height: 40,
+          color: 'var(--text-h)',
+          backgroundColor: 'var(--surface-raised, #ffffff)',
+          border: '1px solid var(--border, #e5e4e7)',
+          boxShadow: '0 8px 24px rgba(28, 22, 38, 0.14)',
+          '&:hover': {
+            backgroundColor: 'var(--interactive-bg, #e8def8)',
+          },
+        })}
+      >
+        {isVisible ? <FullscreenOutlinedIcon /> : <MenuOpenOutlinedIcon />}
+      </IconButton>
+    </Tooltip>
+  );
+}
+
 function findFirstPresentationId(nodes) {
   for (const node of nodes) {
     if (node.presentationId) {
@@ -834,13 +863,6 @@ function findFirstPresentationId(nodes) {
   return null;
 }
 
-function getTimingGoalSeconds(timingGoal = { minutes: 0, seconds: 0 }) {
-  return Math.max(
-    0,
-    Number(timingGoal.minutes ?? 0) * 60 + Number(timingGoal.seconds ?? 0)
-  );
-}
-
 function findNodeIdByPresentationId(nodes, presentationId) {
   for (const node of nodes) {
     if (node.presentationId === presentationId) {
@@ -854,6 +876,13 @@ function findNodeIdByPresentationId(nodes, presentationId) {
   }
 
   return null;
+}
+
+function getTimingGoalSeconds(timingGoal = { minutes: 0, seconds: 0 }) {
+  return Math.max(
+    0,
+    Number(timingGoal.minutes ?? 0) * 60 + Number(timingGoal.seconds ?? 0)
+  );
 }
 
 function isEditableTarget(target) {
@@ -886,6 +915,22 @@ function getAudioExtension(mimeType = '') {
   }
 
   return 'webm';
+}
+
+function readPresenterChromePreference() {
+  try {
+    return window.localStorage.getItem(PRESENTER_CHROME_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function writePresenterChromePreference(isVisible) {
+  try {
+    window.localStorage.setItem(PRESENTER_CHROME_STORAGE_KEY, isVisible ? 'true' : 'false');
+  } catch {
+    // If browser storage is unavailable, the toggle still works for this session.
+  }
 }
 
 function getActiveSlideStorageKey(deckId) {

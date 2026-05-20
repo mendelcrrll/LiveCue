@@ -1,93 +1,117 @@
 # RT Presentation Feedback
 
+RT Presentation Feedback is a local-first demo app for helping presenters prepare and deliver Google Slides presentations with private, real-time feedback.
 
+The current branch, `test-section`, contains the latest demo flow. Treat it as the working reference for the current product state until the team decides how to merge or rename it.
 
-## Getting started
+## Current Product State
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+The app currently supports:
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- Google OAuth sign-in and session cookies for local development.
+- A workflow library with folders, manual files, and Google Slides imports.
+- Google Slides ingestion into a local Supabase Postgres database.
+- Slide thumbnails, speaker notes, and readable slide context.
+- A builder view where each slide can store priority goals, timing goals, accessibility checks, speaker notes, and a demo transcript.
+- LLM-assisted builder schema generation from slide context, speaker notes, and optional demo transcripts.
+- A presenter view with slide navigation, timer controls, a private feedback panel, and an optional separate slide-only window.
+- Microphone capture in browser, chunked transcription through a local `whisper.cpp` HTTP service, and transcript storage per presentation slide.
+- LLM-assisted feedback decisions that update completed goals, accessibility status, timing notes, and presenter-facing feedback.
 
-## Add your files
+## Repository Layout
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
+```text
+apps/
+  api/        FastAPI backend, database models, Supabase migrations, Google integration, transcription routes, LLM feedback logic.
+  web/        React + Vite frontend for the workflow library, builder, and presenter views.
+docs/         Architecture, user flows, API contracts, events, setup state, and ADRs.
+infra/        Local demo scripts, Docker assets, and environment setup notes.
+packages/     Shared contracts and prompt assets reserved for cross-app reuse.
+references/   Vendored/reference material, including Google Slides examples and whisper.cpp.
 ```
-cd existing_repo
-git remote add origin https://gitlab.cs.washington.edu/cse481l-project/rt-presentation-feedback.git
-git branch -M main
-git push -uf origin main
+
+## Quick Start
+
+Install root JavaScript dependencies:
+
+```powershell
+npm install
 ```
 
-## Integrate with your tools
+Set up the backend virtual environment:
 
-* [Set up project integrations](https://gitlab.cs.washington.edu/cse481l-project/rt-presentation-feedback/-/settings/integrations)
+```powershell
+cd apps/api
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -U pip
+.\.venv\Scripts\python.exe -m pip install -e .[dev]
+```
 
-## Collaborate with your team
+Create `apps/api/.env` with the values your local flow needs. See `infra/env/README.md` for the current environment variables.
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+For the full local demo stack, use:
 
-## Test and Deploy
+```powershell
+powershell -ExecutionPolicy Bypass -File infra\scripts\start-demo.ps1
+```
 
-Use the built-in continuous integration in GitLab.
+The script starts Supabase, Whisper, FastAPI, and Vite, then prints the web URL. Use this when preparing for a demo because it matches the current integrated path.
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+## Manual Development Commands
 
-***
+Run the backend:
 
-# Editing this README
+```powershell
+cd apps/api
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+Run the web app:
 
-## Suggestions for a good README
+```powershell
+npm --workspace web run dev
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+Run frontend checks:
 
-## Name
-Choose a self-explaining name for your project.
+```powershell
+npm --workspace web run lint
+npm --workspace web run build
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+Run backend checks:
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+```powershell
+cd apps/api
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m pytest
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+## Main Local URLs
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+- Web app: `http://127.0.0.1:5173`
+- API health check: `http://127.0.0.1:8000/health`
+- Google OAuth login: `http://127.0.0.1:8000/api/auth/google/login`
+- Auth session status: `http://127.0.0.1:8000/api/auth/session`
+- Presentation tree: `http://127.0.0.1:8000/api/presentations/tree`
+- Whisper HTTP service: `http://127.0.0.1:8081`
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+## Documentation Map
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+- `docs/architecture.md`: current architecture and runtime flow.
+- `docs/user-flows.md`: what a presenter does through the app.
+- `docs/api-contracts.md`: implemented API endpoints and payload concepts.
+- `docs/event-catalog.md`: current event/update shapes and future real-time direction.
+- `docs/setup-checklist.md`: completed work and remaining setup/documentation tasks.
+- `apps/web/README.md`: frontend-specific structure and commands.
+- `apps/api/README.md`: backend-specific structure, setup, endpoints, and services.
+- `infra/README.md`: local demo stack and helper scripts.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## Important Notes
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- The root `package.json` only defines workspaces. Most web commands run through the `web` workspace.
+- The backend reads configuration from `apps/api/.env`.
+- Real Google import and note refresh require valid Google OAuth credentials.
+- Builder generation and feedback decisions require `OPENAI_API_KEY`.
+- Transcription requires the local Whisper service and the `ggml-base.en.bin` model under `references/whisper.cpp/models`.
+- Do not commit local secrets, Supabase temp files, downloaded models, or `.tmp` process state.

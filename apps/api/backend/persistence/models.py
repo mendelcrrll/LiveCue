@@ -97,6 +97,11 @@ class PresentationSlide(Base):
         cascade="all, delete-orphan",
         order_by="SlidePainPoint.created_at",
     )
+    demo_transcript: Mapped[SlideDemoTranscript | None] = relationship(
+        back_populates="slide",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
     transcript_chunks: Mapped[list[PresentationTranscriptChunk]] = relationship(
         back_populates="slide",
         cascade="all, delete-orphan",
@@ -153,6 +158,40 @@ class SlidePainPoint(Base):
     )
 
     slide: Mapped[PresentationSlide] = relationship(back_populates="pain_points")
+
+
+class SlideDemoTranscript(Base):
+    __tablename__ = "slide_demo_transcripts"
+    __table_args__ = (
+        UniqueConstraint(
+            "slide_id",
+            name="uq_slide_demo_transcripts_slide_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slide_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("slides.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    transcript: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source: Mapped[str] = mapped_column(String(64), nullable=False, default="manual")
+    extra_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    slide: Mapped[PresentationSlide] = relationship(back_populates="demo_transcript")
 
 
 class PresentationTranscriptChunk(Base):

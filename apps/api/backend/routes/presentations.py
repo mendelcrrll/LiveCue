@@ -15,6 +15,7 @@ from backend.persistence.models import (
     Presentation,
     PresentationSlide,
     PresentationTranscriptChunk,
+    SlideDemoTranscript,
     SlidePriorityItem,
 )
 from backend.persistence.presentations import _add_readable_slide_context
@@ -31,6 +32,7 @@ from backend.schemas.presentations import (
     BuilderSchemaGenerationRequest,
     BuilderSlide,
     BuilderSlideData,
+    BuilderSlideDemoTranscriptUpdateRequest,
     BuilderSlideNotesUpdateRequest,
     BuilderSlideUpdateRequest,
     BuilderTimingGoal,
@@ -262,6 +264,42 @@ async def update_builder_slide_notes(
         session.close()
 
 
+@router.put(
+    "/{presentation_id}/builder-schema/slides/{slide_id}/demo-transcript",
+    response_model=BuilderSlide,
+)
+def update_builder_slide_demo_transcript(
+    presentation_id: UUID,
+    slide_id: UUID,
+    payload: BuilderSlideDemoTranscriptUpdateRequest,
+):
+    session = get_session()
+
+    try:
+        slide = session.get(PresentationSlide, slide_id)
+        if slide is None or slide.presentation_id != presentation_id:
+            raise HTTPException(status_code=404, detail="Slide not found.")
+
+        if slide.demo_transcript is None:
+            slide.demo_transcript = SlideDemoTranscript(
+                transcript=payload.demoTranscript,
+                source=payload.source,
+            )
+        else:
+            slide.demo_transcript.transcript = payload.demoTranscript
+            slide.demo_transcript.source = payload.source
+
+        session.commit()
+        session.refresh(slide)
+
+        return _to_builder_slide(slide)
+    except HTTPException:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 @router.post(
     "/{presentation_id}/builder-schema/slides/{slide_id}/generate",
     response_model=BuilderSlideData,
@@ -286,6 +324,7 @@ async def generate_builder_slide_schema(
             presentation=presentation,
             slide=slide,
             speaker_notes_override=payload.speakerNotes,
+            demo_transcript=payload.demoTranscript,
             model=payload.model,
         )
         raw_schema = await ModelClient().generate_builder_schema(context)
@@ -720,6 +759,7 @@ def _to_builder_slide(slide) -> BuilderSlide:
     title = raw_page.get("title") or f"Slide {slide_number}"
     slide_text = raw_page.get("slideText") or raw_page.get("text") or []
     speaker_notes = raw_page.get("speakerNotes") or raw_page.get("notes") or ""
+    demo_transcript = _get_demo_transcript_text(slide, raw_page)
 
     if isinstance(slide_text, str):
         slide_text = [slide_text]
@@ -732,6 +772,7 @@ def _to_builder_slide(slide) -> BuilderSlide:
         title=title,
         slideText=slide_text,
         speakerNotes=speaker_notes,
+        demoTranscript=demo_transcript,
         thumbnailUrl=raw_page.get("thumbnailUrl") or raw_page.get("imageUrl"),
         buildData=BuilderSlideData(
             priorityItems=[
@@ -756,6 +797,14 @@ def _to_builder_slide(slide) -> BuilderSlide:
             ),
         ),
     )
+
+
+def _get_demo_transcript_text(slide: PresentationSlide, raw_page: dict | None = None) -> str:
+    if slide.demo_transcript is not None:
+        return slide.demo_transcript.transcript
+
+    raw_page = raw_page if raw_page is not None else slide.raw_page or {}
+    return str(raw_page.get("demoTranscript") or "")
 
 
 def _apply_builder_slide_data(
@@ -825,6 +874,7 @@ def _build_feedback_context(
     raw_page = _ensure_readable_slide_context(slide)
     slide_text = _coerce_text_list(raw_page.get("slideText") or raw_page.get("text") or [])
     speaker_notes = str(raw_page.get("speakerNotes") or raw_page.get("notes") or "")
+    demo_transcript = _get_demo_transcript_text(slide, raw_page)
     image_descriptions = _coerce_text_list(raw_page.get("imageDescriptions") or [])
     transcript_window = [
         {
@@ -849,6 +899,7 @@ def _build_feedback_context(
             "title": raw_page.get("title") or f"Slide {slide.slide_index + 1}",
             "slideText": slide_text,
             "speakerNotes": speaker_notes,
+            "demoTranscript": demo_transcript,
             "imageDescriptions": image_descriptions,
             "visualElementCount": len(raw_page.get("pageElements", [])),
         },
@@ -897,6 +948,7 @@ def _build_builder_schema_context(
     presentation: Presentation,
     slide: PresentationSlide,
     speaker_notes_override: str | None,
+    demo_transcript: str | None,
     model: str | None,
 ) -> dict:
     raw_page = _ensure_readable_slide_context(slide)
@@ -904,6 +956,11 @@ def _build_builder_schema_context(
         speaker_notes_override
         if speaker_notes_override is not None
         else str(raw_page.get("speakerNotes") or raw_page.get("notes") or "")
+    )
+    resolved_demo_transcript = (
+        demo_transcript
+        if demo_transcript is not None
+        else _get_demo_transcript_text(slide, raw_page)
     )
     current_slide = _to_builder_slide(slide)
 
@@ -919,6 +976,7 @@ def _build_builder_schema_context(
             "title": raw_page.get("title") or f"Slide {slide.slide_index + 1}",
             "slideText": _coerce_text_list(raw_page.get("slideText") or raw_page.get("text") or []),
             "speakerNotes": speaker_notes,
+            "demoTranscript": resolved_demo_transcript,
             "imageDescriptions": _coerce_text_list(raw_page.get("imageDescriptions") or []),
             "visualElementCount": len(raw_page.get("pageElements", [])),
         },

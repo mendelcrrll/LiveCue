@@ -7,7 +7,6 @@ import PresenterFeedbackPanel from './PresenterFeedbackPanel';
 import PresenterSlidePanel from './PresenterSlidePanel';
 
 const PRESENTER_WORKSPACE_SCALE = 0.95;
-const PRESENTER_WORKSPACE_TOP_OFFSET = 92;
 
 function PresenterWorkspace({
   activeSlide,
@@ -15,7 +14,6 @@ function PresenterWorkspace({
   isTimerPaused,
   isTranscriptionActive,
   isDeletingTranscripts,
-  liveFeedbackEvents,
   nextSlide,
   onDeleteTranscripts,
   onResetTimer,
@@ -29,6 +27,7 @@ function PresenterWorkspace({
   slidePanelMinWidth,
   slidePanelWidth,
   timerSeconds,
+  topOffset = 32,
   transcriptionError,
 }) {
   return (
@@ -44,7 +43,7 @@ function PresenterWorkspace({
           lg: 1440 / PRESENTER_WORKSPACE_SCALE,
         },
         mx: 'auto',
-        mt: 1,
+        mt: 0,
         minHeight: 0,
         transform: { lg: `scale(${PRESENTER_WORKSPACE_SCALE})` },
         transformOrigin: 'top left',
@@ -61,11 +60,11 @@ function PresenterWorkspace({
           gap: { xs: 2, lg: 0 },
           alignItems: 'stretch',
           height: {
-            lg: `calc((100vh - ${PRESENTER_WORKSPACE_TOP_OFFSET}px) / ${PRESENTER_WORKSPACE_SCALE})`,
+            lg: `calc((100vh - ${topOffset}px) / ${PRESENTER_WORKSPACE_SCALE})`,
           },
           minHeight: { lg: 0 },
           maxHeight: {
-            lg: `calc((100vh - ${PRESENTER_WORKSPACE_TOP_OFFSET}px) / ${PRESENTER_WORKSPACE_SCALE})`,
+            lg: `calc((100vh - ${topOffset}px) / ${PRESENTER_WORKSPACE_SCALE})`,
           },
           overflow: { lg: 'hidden' },
         }}
@@ -122,7 +121,7 @@ function PresenterWorkspace({
               onKeyDown={onResizeKeyDown}
             />
 
-            <PresenterFeedbackPanel slide={activeSlide} liveFeedbackEvents={liveFeedbackEvents} />
+            <PresenterFeedbackPanel slide={activeSlide} />
           </>
         ) : (
           <Alert severity="info">Select a slide to view presenter mode.</Alert>

@@ -2,6 +2,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import AccessibilityChecklistEditor from './AccessibilityChecklistEditor';
+import DemoTranscriptCard from './DemoTranscriptCard';
 import PriorityQueueEditor from './PriorityQueueEditor';
 import SlideNotesCard from './SlideNotesCard';
 import TimingGoalEditor from './TimingGoalEditor';
@@ -55,15 +56,23 @@ function SlideBuilderPanel({
   slide,
   onUpdateSlide,
   onUpdateSlideNotes,
+  onChangeDemoTranscript,
+  onStartDemoTranscriptRecording,
+  onStopDemoTranscriptRecording,
+  onClearDemoTranscript,
   onSaveSlideNotes,
   onGenerateSlideSchema,
   onRefreshGoogleContext,
+  demoTranscript = '',
+  demoTranscriptError = '',
   canRefreshGoogleContext = true,
   isRefreshingGoogleContext = false,
   canSaveSlideNotes = true,
   isSavingSlideNotes = false,
   hasUnsavedSlideNotes = false,
   isGeneratingSlideSchema = false,
+  isRecordingDemoTranscript = false,
+  isTranscribingDemoTranscript = false,
 }) {
   if (!slide) {
     return (
@@ -112,6 +121,28 @@ function SlideBuilderPanel({
           isSavingNotes={isSavingSlideNotes}
           hasUnsavedNotes={hasUnsavedSlideNotes}
           isGeneratingSlideSchema={isGeneratingSlideSchema}
+        />
+      </Paper>
+
+      <Paper
+        elevation={0}
+        sx={{
+          p: 3,
+          border: '1px solid var(--border, #e5e4e7)',
+          backgroundColor: 'var(--surface-raised, #ffffff)',
+        }}
+      >
+        <DemoTranscriptCard
+          transcript={demoTranscript}
+          onChangeTranscript={(transcript) =>
+            onChangeDemoTranscript?.(slide.slideId, transcript)
+          }
+          onStartRecording={() => onStartDemoTranscriptRecording?.(slide.slideId)}
+          onStopRecording={onStopDemoTranscriptRecording}
+          onClearTranscript={() => onClearDemoTranscript?.(slide.slideId)}
+          isRecording={isRecordingDemoTranscript}
+          isTranscribing={isTranscribingDemoTranscript}
+          error={demoTranscriptError}
         />
       </Paper>
 

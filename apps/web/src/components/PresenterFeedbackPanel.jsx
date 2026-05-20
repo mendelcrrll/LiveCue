@@ -1,30 +1,55 @@
 import Box from '@mui/material/Box';
+import LinearProgress from '@mui/material/LinearProgress';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
-function PresenterFeedbackPanel({ liveFeedbackEvents = [], slide }) {
+function PresenterFeedbackPanel({ slide }) {
   const priorityItems = [...(slide.buildData?.priorityItems ?? [])].sort(
     (a, b) => a.priority - b.priority
   );
-  const accessibilityChecks = slide.buildData?.accessibilityChecks ?? [];
+  const completedGoalCount = priorityItems.filter(isPriorityItemComplete).length;
+  const goalProgress = priorityItems.length
+    ? Math.round((completedGoalCount / priorityItems.length) * 100)
+    : 0;
 
   return (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateRows: { xs: 'auto auto', lg: 'minmax(0, 1fr) minmax(0, 1fr)' },
-        gap: 2,
-        height: '100%',
-        minHeight: 0,
-        overflow: 'hidden',
-      }}
-    >
-      <PresenterWindow title="Priority Queue">
+    <PresenterWindow title="Current Goals">
+      <Stack spacing={1.5} sx={{ minHeight: 0 }}>
+        <Box>
+          <Stack direction="row" alignItems="baseline" justifyContent="space-between" gap={2}>
+            <Typography variant="body2" sx={{ color: 'var(--text-h)', fontWeight: 800 }}>
+              Progress
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ color: 'var(--text-muted)', fontWeight: 800, flexShrink: 0 }}
+            >
+              {completedGoalCount}/{priorityItems.length} complete
+            </Typography>
+          </Stack>
+          <LinearProgress
+            variant="determinate"
+            value={goalProgress}
+            aria-label="Current goals progress"
+            sx={{
+              mt: 0.75,
+              height: 10,
+              borderRadius: 999,
+              backgroundColor: 'var(--surface, #f7f4fb)',
+              '& .MuiLinearProgress-bar': {
+                borderRadius: 999,
+                backgroundColor: 'var(--interactive-border, #8e72bf)',
+              },
+            }}
+          />
+        </Box>
+
         <Stack spacing={1}>
           {priorityItems.length > 0 ? (
             priorityItems.map((item, index) => {
               const isComplete = isPriorityItemComplete(item);
+              const itemProgress = isComplete ? 100 : 0;
 
               return (
                 <Box
@@ -32,107 +57,82 @@ function PresenterFeedbackPanel({ liveFeedbackEvents = [], slide }) {
                   data-priority-item-id={item.id}
                   data-priority-complete={isComplete ? 'true' : 'false'}
                   sx={{
-                    minHeight: 42,
-                    display: 'flex',
-                    alignItems: 'center',
+                    minHeight: 76,
+                    display: 'grid',
+                    gridTemplateColumns: '32px minmax(0, 1fr)',
                     gap: 1.5,
                     px: 1.5,
-                    py: 1,
+                    py: 1.25,
                     borderRadius: 1,
                     border: '1px solid var(--border, #e5e4e7)',
                     backgroundColor:
-                      index === 0
+                      !isComplete && index === completedGoalCount
                         ? 'var(--interactive-bg, #e8def8)'
                         : 'var(--surface, #f7f4fb)',
-                    opacity: isComplete ? 0.58 : 1,
                   }}
                 >
                   <Typography
                     variant="body2"
-                    sx={{ color: 'var(--text-muted)', fontWeight: 800, width: 28 }}
+                    sx={{ color: 'var(--text-muted)', fontWeight: 800, pt: 0.25 }}
                   >
                     #{index + 1}
                   </Typography>
-                  <Typography
-                    sx={{
-                      color: 'var(--text-h)',
-                      fontWeight: index === 0 ? 700 : 500,
-                      textDecoration: isComplete ? 'line-through' : 'none',
-                      textDecorationThickness: 2,
-                    }}
-                  >
-                    {item.text || 'Untitled priority'}
-                  </Typography>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="baseline"
+                      justifyContent="space-between"
+                    >
+                      <Typography
+                        sx={{
+                          color: 'var(--text-h)',
+                          fontWeight: !isComplete && index === completedGoalCount ? 700 : 500,
+                        }}
+                      >
+                        {item.text || 'Untitled goal'}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: isComplete
+                            ? 'var(--interactive-border, #8e72bf)'
+                            : 'var(--text-muted)',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {isComplete ? 'Done' : 'Pending'}
+                      </Typography>
+                    </Stack>
+                    <LinearProgress
+                      variant="determinate"
+                      value={itemProgress}
+                      aria-label={`Goal ${index + 1} progress`}
+                      sx={{
+                        mt: 0.9,
+                        height: 6,
+                        borderRadius: 999,
+                        backgroundColor: 'var(--surface-raised, #ffffff)',
+                        '& .MuiLinearProgress-bar': {
+                          borderRadius: 999,
+                          backgroundColor: 'var(--interactive-border, #8e72bf)',
+                        },
+                      }}
+                    />
+                  </Box>
                 </Box>
               );
             })
           ) : (
             <Typography sx={{ color: 'var(--text-muted)' }}>
-              No priority feedback has been configured for this slide.
+              No goals have been configured for this slide.
             </Typography>
           )}
         </Stack>
-      </PresenterWindow>
-
-      <PresenterWindow title="Live Feedback Log">
-        <Stack spacing={1.25}>
-          {liveFeedbackEvents.length > 0 ? (
-            liveFeedbackEvents.map((event, index) => (
-              <Box
-                key={`${event.createdAt ?? 'event'}-${index}`}
-                sx={{
-                  border: '1px solid var(--border, #e5e4e7)',
-                  borderRadius: 1,
-                  px: 1.5,
-                  py: 1,
-                  backgroundColor: 'var(--surface, #f7f4fb)',
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  sx={{ color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}
-                >
-                  {formatEventKind(event.kind)}
-                </Typography>
-                <Typography sx={{ color: 'var(--text-h)' }}>
-                  {event.message || event.action || 'Feedback updated'}
-                </Typography>
-              </Box>
-            ))
-          ) : (
-            <Typography sx={{ color: 'var(--text-muted)' }}>
-              Feedback decisions will appear as transcript chunks are processed.
-            </Typography>
-          )}
-
-          {accessibilityChecks.length > 0 && (
-            <Box sx={{ pt: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ color: 'var(--text-h)', fontWeight: 800 }}>
-                Accessibility
-              </Typography>
-              <Stack spacing={0.75} sx={{ mt: 0.75 }}>
-                {accessibilityChecks.map((check) => (
-                  <Box
-                    key={check.id}
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: 1,
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    <Typography variant="body2">{check.label}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 750 }}>
-                      {formatStatus(check.status)}
-                    </Typography>
-                  </Box>
-                ))}
-              </Stack>
-            </Box>
-          )}
-        </Stack>
-      </PresenterWindow>
-    </Box>
+      </Stack>
+    </PresenterWindow>
   );
 }
 
@@ -170,18 +170,6 @@ function PresenterWindow({ title, children }) {
 
 function isPriorityItemComplete(item) {
   return Boolean(item.completed || item.complete || item.isComplete || item.finished);
-}
-
-function formatEventKind(kind = '') {
-  if (!kind) {
-    return 'Update';
-  }
-
-  return kind.replace(/[_-]/g, ' ');
-}
-
-function formatStatus(status = 'pending') {
-  return status.replace(/[_-]/g, ' ');
 }
 
 export default PresenterFeedbackPanel;

@@ -18,6 +18,7 @@ import SlideBuilderPanel from '../components/SlideBuilderPanel';
 import SlideNavigator from '../components/SlideNavigator';
 import { findNodeById } from '../data/presentationTree';
 import PresentationBuilderService from '../services/PresentationBuilderService';
+import TranscriptionService from '../services/TranscriptionService';
 import PresentationWorkflowService from '../services/PresentationWorkflowService';
 import { sortSlidesByNumber } from '../utils/slideUtils';
 
@@ -72,12 +73,22 @@ function BuilderSchema() {
   const [isRefreshingContext, setIsRefreshingContext] = useState(false);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [demoTranscriptsBySlideId, setDemoTranscriptsBySlideId] = useState({});
+  const [recordingDemoSlideId, setRecordingDemoSlideId] = useState(null);
+  const [transcribingDemoSlideId, setTranscribingDemoSlideId] = useState(null);
+  const [demoTranscriptError, setDemoTranscriptError] = useState('');
   const [dirtySlideIds, setDirtySlideIds] = useState(() => new Set());
   const [dirtyNoteSlideIds, setDirtyNoteSlideIds] = useState(() => new Set());
   const [error, setError] = useState('');
   const [saveError, setSaveError] = useState('');
   const panelGridRef = useRef(null);
   const dirtyVersionsRef = useRef({});
+  const demoMediaRecorderRef = useRef(null);
+  const demoMediaStreamRef = useRef(null);
+  const demoAudioChunksRef = useRef([]);
+  const demoRecordingSlideIdRef = useRef(null);
+  const demoShouldTranscribeRef = useRef(false);
+  const demoTranscriptSaveTimeoutsRef = useRef({});
 
   useEffect(() => {
     async function loadWorkflowTree() {
@@ -115,6 +126,7 @@ function BuilderSchema() {
           ...data,
           slides,
         });
+        setDemoTranscriptsBySlideId(getDemoTranscriptsBySlideId(slides));
         setActiveSlideId(firstSlide?.slideId ?? null);
         setDirtySlideIds(new Set());
         setDirtyNoteSlideIds(new Set());
@@ -168,6 +180,17 @@ function BuilderSchema() {
 
     return () => {
       resizeObserver.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const saveTimeouts = demoTranscriptSaveTimeoutsRef.current;
+
+    return () => {
+      stopDemoTranscriptRecording({ shouldTranscribe: false });
+      Object.values(saveTimeouts).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
     };
   }, []);
 
@@ -310,6 +333,7 @@ function BuilderSchema() {
           slide.slideId,
           {
             speakerNotes: slide.speakerNotes ?? '',
+            demoTranscript: demoTranscriptsBySlideId[slide.slideId] ?? '',
           }
         );
 
@@ -378,6 +402,7 @@ function BuilderSchema() {
         slideId,
         {
           speakerNotes: slide.speakerNotes ?? '',
+          demoTranscript: demoTranscriptsBySlideId[slideId] ?? '',
         }
       );
 
@@ -477,6 +502,7 @@ function BuilderSchema() {
         ...data,
         slides,
       });
+      setDemoTranscriptsBySlideId(getDemoTranscriptsBySlideId(slides));
       setActiveSlideId(nextActiveSlideId);
       setDirtyNoteSlideIds(new Set());
     } catch (refreshError) {
@@ -512,6 +538,191 @@ function BuilderSchema() {
 
     window.open(`/presentation-schema/${deckId}${slideOnlyParam}`, '_blank', 'noopener,noreferrer');
     navigate(`/presentation-schema/${deckId}${slideParam}`);
+  }
+
+  function handleChangeDemoTranscript(slideId, transcript) {
+    setDemoTranscriptsBySlideId((currentTranscripts) => ({
+      ...currentTranscripts,
+      [slideId]: transcript,
+    }));
+    setPresentationDataDemoTranscript(slideId, transcript);
+    queueSaveDemoTranscript(slideId, transcript);
+    setDemoTranscriptError('');
+  }
+
+  function handleClearDemoTranscript(slideId) {
+    setDemoTranscriptsBySlideId((currentTranscripts) => {
+      const nextTranscripts = { ...currentTranscripts };
+
+      delete nextTranscripts[slideId];
+      return nextTranscripts;
+    });
+    setPresentationDataDemoTranscript(slideId, '');
+    queueSaveDemoTranscript(slideId, '');
+    setDemoTranscriptError('');
+  }
+
+  function setPresentationDataDemoTranscript(slideId, demoTranscript) {
+    setPresentationData((currentData) => {
+      if (!currentData) {
+        return currentData;
+      }
+
+      return {
+        ...currentData,
+        slides: currentData.slides.map((slide) =>
+          slide.slideId === slideId
+            ? {
+                ...slide,
+                demoTranscript,
+              }
+            : slide
+        ),
+      };
+    });
+  }
+
+  function queueSaveDemoTranscript(slideId, demoTranscript) {
+    window.clearTimeout(demoTranscriptSaveTimeoutsRef.current[slideId]);
+    demoTranscriptSaveTimeoutsRef.current[slideId] = window.setTimeout(() => {
+      void saveDemoTranscript(slideId, demoTranscript, { source: 'manual' });
+      delete demoTranscriptSaveTimeoutsRef.current[slideId];
+    }, 700);
+  }
+
+  async function saveDemoTranscript(slideId, demoTranscript, { source = 'manual' } = {}) {
+    if (!deckId || !slideId) {
+      return;
+    }
+
+    try {
+      await PresentationBuilderService.updateSlideDemoTranscript(
+        deckId,
+        slideId,
+        demoTranscript,
+        { source }
+      );
+    } catch (saveTranscriptError) {
+      setDemoTranscriptError(
+        saveTranscriptError instanceof Error
+          ? saveTranscriptError.message
+          : 'Unable to save demo transcript.'
+      );
+    }
+  }
+
+  async function handleStartDemoTranscriptRecording(slideId) {
+    if (demoMediaRecorderRef.current?.state === 'recording') {
+      return;
+    }
+
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setDemoTranscriptError('Microphone recording is not supported in this browser.');
+      return;
+    }
+
+    try {
+      setDemoTranscriptError('');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getSupportedAudioMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+      demoAudioChunksRef.current = [];
+      demoMediaStreamRef.current = stream;
+      demoRecordingSlideIdRef.current = slideId;
+      demoShouldTranscribeRef.current = true;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          demoAudioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const recordedMimeType = recorder.mimeType || mimeType || 'audio/webm';
+        const chunks = demoAudioChunksRef.current;
+        const recordingSlideId = demoRecordingSlideIdRef.current;
+
+        demoMediaRecorderRef.current = null;
+        demoAudioChunksRef.current = [];
+        demoRecordingSlideIdRef.current = null;
+        demoMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        demoMediaStreamRef.current = null;
+        setRecordingDemoSlideId(null);
+
+        if (demoShouldTranscribeRef.current && chunks.length > 0 && recordingSlideId) {
+          void transcribeDemoRecording({
+            audioBlob: new Blob(chunks, { type: recordedMimeType }),
+            mimeType: recordedMimeType,
+            slideId: recordingSlideId,
+          });
+        }
+      };
+
+      demoMediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecordingDemoSlideId(slideId);
+    } catch (recordingError) {
+      setDemoTranscriptError(
+        recordingError instanceof Error
+          ? recordingError.message
+          : 'Unable to start demo recording.'
+      );
+      setRecordingDemoSlideId(null);
+    }
+  }
+
+  function stopDemoTranscriptRecording({ shouldTranscribe = true } = {}) {
+    const recorder = demoMediaRecorderRef.current;
+
+    demoShouldTranscribeRef.current = shouldTranscribe;
+
+    if (!shouldTranscribe) {
+      demoAudioChunksRef.current = [];
+      demoRecordingSlideIdRef.current = null;
+    }
+
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+      return;
+    }
+
+    demoMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    demoMediaStreamRef.current = null;
+    demoMediaRecorderRef.current = null;
+    setRecordingDemoSlideId(null);
+  }
+
+  async function transcribeDemoRecording({ audioBlob, mimeType, slideId }) {
+    const extension = getAudioExtension(mimeType);
+
+    try {
+      setTranscribingDemoSlideId(slideId);
+      setDemoTranscriptError('');
+
+      const payload = await TranscriptionService.transcribeAudio(
+        audioBlob,
+        `demo-transcript.${extension}`
+      );
+      const text = String(payload.text ?? '').trim();
+
+      setDemoTranscriptsBySlideId((currentTranscripts) => ({
+        ...currentTranscripts,
+        [slideId]: text,
+      }));
+      setPresentationDataDemoTranscript(slideId, text);
+      window.clearTimeout(demoTranscriptSaveTimeoutsRef.current[slideId]);
+      delete demoTranscriptSaveTimeoutsRef.current[slideId];
+      await saveDemoTranscript(slideId, text, { source: 'whisper' });
+    } catch (transcriptionError) {
+      setDemoTranscriptError(
+        transcriptionError instanceof Error
+          ? transcriptionError.message
+          : 'Unable to transcribe demo audio.'
+      );
+    } finally {
+      setTranscribingDemoSlideId(null);
+    }
   }
 
   function clampNavigatorWidth(width) {
@@ -801,7 +1012,13 @@ function BuilderSchema() {
               onRefreshGoogleContext={handleRefreshGoogleContext}
               onGenerateSlideSchema={handleGenerateSlideSchema}
               onUpdateSlideNotes={handleUpdateSlideNotes}
+              onChangeDemoTranscript={handleChangeDemoTranscript}
+              onStartDemoTranscriptRecording={handleStartDemoTranscriptRecording}
+              onStopDemoTranscriptRecording={() => stopDemoTranscriptRecording()}
+              onClearDemoTranscript={handleClearDemoTranscript}
               onSaveSlideNotes={handleSaveSlideNotes}
+              demoTranscript={activeSlide ? demoTranscriptsBySlideId[activeSlide.slideId] ?? '' : ''}
+              demoTranscriptError={demoTranscriptError}
               canRefreshGoogleContext={
                 dirtySlideIds.size === 0 && dirtyNoteSlideIds.size === 0 && !isSaving
               }
@@ -810,6 +1027,8 @@ function BuilderSchema() {
               isSavingSlideNotes={isSavingNotes}
               hasUnsavedSlideNotes={Boolean(activeSlide && dirtyNoteSlideIds.has(activeSlide.slideId))}
               isGeneratingSlideSchema={activeSlide?.slideId === generatingSlideSchemaId}
+              isRecordingDemoTranscript={activeSlide?.slideId === recordingDemoSlideId}
+              isTranscribingDemoTranscript={activeSlide?.slideId === transcribingDemoSlideId}
             />
           </Box>
         </Stack>
@@ -831,6 +1050,34 @@ function findNodeIdByPresentationId(nodes, presentationId) {
   }
 
   return null;
+}
+
+function getDemoTranscriptsBySlideId(slides) {
+  return Object.fromEntries(
+    slides.map((slide) => [slide.slideId, String(slide.demoTranscript ?? '')])
+  );
+}
+
+function getSupportedAudioMimeType() {
+  if (typeof MediaRecorder === 'undefined') {
+    return '';
+  }
+
+  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+
+  return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
+}
+
+function getAudioExtension(mimeType) {
+  if (mimeType.includes('mp4')) {
+    return 'mp4';
+  }
+
+  if (mimeType.includes('ogg')) {
+    return 'ogg';
+  }
+
+  return 'webm';
 }
 
 export default BuilderSchema;
