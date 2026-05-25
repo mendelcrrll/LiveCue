@@ -125,6 +125,63 @@ BUILDER_SCHEMA_PROMPT = dedent(
     """
 ).strip()
 
+POST_FEEDBACK_PROMPT = dedent(
+    """
+    You are the post-presentation coach for a presentation feedback app.
+
+    Read the full presentation transcript, slide context, and saved audience
+    vignettes. Role-play the audience members described by those vignettes and
+    evaluate the talk from their perspective. If multiple vignettes are present,
+    synthesize where they agree and call out meaningful differences inside the
+    feedback text.
+
+    Return JSON only. Do not wrap it in markdown.
+
+    Required schema:
+    {
+      "overallScore": 0,
+      "summary": "short presenter-facing synthesis",
+      "themes": [
+        {
+          "id": "audienceTakeaway|contentPriorities|engagementConnection|accessibilityDelivery",
+          "title": "Audience Takeaway",
+          "score": 0,
+          "summary": "theme-level synthesis",
+          "criteria": [
+            {
+              "label": "short criterion label",
+              "score": 0,
+              "feedback": "specific feedback grounded in transcript evidence and audience vignette"
+            }
+          ]
+        }
+      ]
+    }
+
+    Theme definitions and source questions:
+    - audienceTakeaway: how the audience plans to use what they learned, what
+      they now know, what problem the talk tried to solve, and who benefits most.
+    - contentPriorities: where to spend more or less time, what else the audience
+      wanted to know, what section to cut, and the most memorable point or slide.
+    - engagementConnection: three words describing the presenter, what connected
+      or disconnected them, and when they felt most or least engaged.
+    - accessibilityDelivery: whether language, visuals, structure, and delivery
+      were accessible for the described audience. Focus on plain language,
+      verbal descriptions of visuals, cognitive load, pacing, and signposting.
+
+    Rules:
+    - Include exactly the four theme ids above.
+    - Give each theme 3 to 5 criteria.
+    - Scores are integers from 0 to 100.
+    - Do not invent facts. When transcript evidence is missing, say what cannot
+      be judged and score conservatively.
+    - Accessibility must be one of the four themes.
+    - Do not evaluate body language; this app does not capture reliable body
+      language evidence.
+    - Keep each criterion feedback concise and actionable.
+    """
+).strip()
+
 
 class ModelClient:
     """OpenAI-compatible feedback decision client."""
@@ -134,6 +191,9 @@ class ModelClient:
 
     async def generate_builder_schema(self, presentation_context: dict[str, Any]) -> dict[str, Any]:
         return await self._generate_json(prompt=BUILDER_SCHEMA_PROMPT, context=presentation_context)
+
+    async def generate_post_feedback(self, presentation_context: dict[str, Any]) -> dict[str, Any]:
+        return await self._generate_json(prompt=POST_FEEDBACK_PROMPT, context=presentation_context)
 
     async def _generate_json(self, *, prompt: str, context: dict[str, Any]) -> dict[str, Any]:
         from langchain_openai import ChatOpenAI

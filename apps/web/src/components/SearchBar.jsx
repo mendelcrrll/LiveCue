@@ -66,7 +66,7 @@ function flattenTree(nodes, path = []) {
   });
 }
 
-export default function SearchBar({ treeData, onSelectNode }) {
+export default function SearchBar({ treeData = [], onSelectNode = () => {} }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
 

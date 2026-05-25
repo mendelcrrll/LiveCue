@@ -46,6 +46,16 @@ class Presentation(Base):
         cascade="all, delete-orphan",
         order_by="PresentationSlide.slide_index",
     )
+    audience_vignettes: Mapped[list[PresentationAudienceVignette]] = relationship(
+        back_populates="presentation",
+        cascade="all, delete-orphan",
+        order_by="PresentationAudienceVignette.sort_order",
+    )
+    post_feedback_reports: Mapped[list[PresentationPostFeedbackReport]] = relationship(
+        back_populates="presentation",
+        cascade="all, delete-orphan",
+        order_by="PresentationPostFeedbackReport.updated_at",
+    )
 
 
 class PresentationSlide(Base):
@@ -221,6 +231,63 @@ class PresentationTranscriptChunk(Base):
     )
 
     slide: Mapped[PresentationSlide] = relationship(back_populates="transcript_chunks")
+
+
+class PresentationAudienceVignette(Base):
+    __tablename__ = "presentation_audience_vignettes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    presentation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("presentations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    presentation: Mapped[Presentation] = relationship(back_populates="audience_vignettes")
+
+
+class PresentationPostFeedbackReport(Base):
+    __tablename__ = "presentation_post_feedback_reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    presentation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("presentations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    model: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="completed")
+    feedback_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    extra_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    presentation: Mapped[Presentation] = relationship(back_populates="post_feedback_reports")
 
 
 class WorkflowNode(Base):

@@ -118,3 +118,59 @@ class FeedbackDecision(BaseModel):
     timing: FeedbackTimingDecision | None = None
     frontendUpdates: list[dict]
     updatedSlide: BuilderSlide
+
+
+class AudienceVignette(BaseModel):
+    id: str
+    title: str = ""
+    prompt: str
+    sortOrder: int
+    createdAt: str | None = None
+    updatedAt: str | None = None
+
+
+class AudienceVignetteCreateRequest(BaseModel):
+    title: str = Field(default="", max_length=255)
+    prompt: str = Field(default="", max_length=20000)
+
+
+class AudienceVignetteUpdateRequest(BaseModel):
+    title: str = Field(default="", max_length=255)
+    prompt: str = Field(default="", max_length=20000)
+
+
+class FeedbackCriterion(BaseModel):
+    label: str
+    score: int = Field(ge=0, le=100)
+    feedback: str
+
+
+class PostFeedbackTheme(BaseModel):
+    id: str
+    title: str
+    score: int = Field(ge=0, le=100)
+    summary: str
+    criteria: list[FeedbackCriterion]
+
+
+class PostFeedbackReport(BaseModel):
+    id: str | None = None
+    status: str = "empty"
+    model: str | None = None
+    overallScore: int | None = Field(default=None, ge=0, le=100)
+    summary: str = ""
+    themes: list[PostFeedbackTheme] = Field(default_factory=list)
+    createdAt: str | None = None
+    updatedAt: str | None = None
+
+
+class PostFeedbackData(BaseModel):
+    deckId: str
+    deckTitle: str
+    vignettes: list[AudienceVignette]
+    feedback: PostFeedbackReport | None = None
+    transcriptChunkCount: int = 0
+
+
+class PostFeedbackGenerationRequest(BaseModel):
+    model: str | None = Field(default=None, min_length=1)
