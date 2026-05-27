@@ -13,6 +13,8 @@ from backend.google.schemas import GoogleSlidesPresentationInput
 from backend.google.slides_client import GoogleSlidesClient
 from backend.persistence.models import (
     Presentation,
+    PresentationAudienceVignette,
+    PresentationPostFeedbackReport,
     PresentationSlide,
     PresentationTranscriptChunk,
     SlideDemoTranscript,
@@ -36,8 +38,16 @@ from backend.schemas.presentations import (
     BuilderSlideNotesUpdateRequest,
     BuilderSlideUpdateRequest,
     BuilderTimingGoal,
+    AudienceVignette,
+    AudienceVignetteCreateRequest,
+    AudienceVignetteUpdateRequest,
     FeedbackDecision,
     FeedbackDecisionRequest,
+    FeedbackCriterion,
+    PostFeedbackData,
+    PostFeedbackGenerationRequest,
+    PostFeedbackReport,
+    PostFeedbackTheme,
     PresentationBuilderData,
     PresentationImportRequest,
     PresentationImportResponse,
@@ -49,6 +59,13 @@ from backend.schemas.workflow import (
 )
 
 router = APIRouter(prefix="/presentations", tags=["presentations"])
+
+POST_FEEDBACK_THEMES = [
+    ("audienceTakeaway", "Audience Takeaway"),
+    ("contentPriorities", "Content Priorities"),
+    ("engagementConnection", "Engagement"),
+    ("accessibilityDelivery", "Accessibility"),
+]
 
 
 @router.get("/tree")
@@ -75,6 +92,168 @@ def get_builder_schema(presentation_id: UUID):
             raise HTTPException(status_code=404, detail="Presentation not found.")
 
         return _to_builder_response(presentation)
+    finally:
+        session.close()
+
+
+@router.get("/{presentation_id}/post-feedback", response_model=PostFeedbackData)
+def get_post_feedback(presentation_id: UUID):
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        return _to_post_feedback_response(presentation)
+    finally:
+        session.close()
+
+
+@router.post(
+    "/{presentation_id}/audience-vignettes",
+    response_model=AudienceVignette,
+    status_code=201,
+)
+def create_audience_vignette(presentation_id: UUID, payload: AudienceVignetteCreateRequest):
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        next_sort_order = len(presentation.audience_vignettes)
+        vignette = PresentationAudienceVignette(
+            presentation_id=presentation_id,
+            title=payload.title,
+            prompt=payload.prompt,
+            sort_order=next_sort_order,
+        )
+        session.add(vignette)
+        session.commit()
+        session.refresh(vignette)
+
+        return _to_audience_vignette_response(vignette)
+    except HTTPException:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+@router.put(
+    "/{presentation_id}/audience-vignettes/{vignette_id}",
+    response_model=AudienceVignette,
+)
+def update_audience_vignette(
+    presentation_id: UUID,
+    vignette_id: UUID,
+    payload: AudienceVignetteUpdateRequest,
+):
+    session = get_session()
+
+    try:
+        vignette = session.get(PresentationAudienceVignette, vignette_id)
+        if vignette is None or vignette.presentation_id != presentation_id:
+            raise HTTPException(status_code=404, detail="Audience vignette not found.")
+
+        vignette.title = payload.title
+        vignette.prompt = payload.prompt
+        session.commit()
+        session.refresh(vignette)
+
+        return _to_audience_vignette_response(vignette)
+    except HTTPException:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+@router.delete("/{presentation_id}/audience-vignettes/{vignette_id}", status_code=204)
+def delete_audience_vignette(presentation_id: UUID, vignette_id: UUID):
+    session = get_session()
+
+    try:
+        vignette = session.get(PresentationAudienceVignette, vignette_id)
+        if vignette is None or vignette.presentation_id != presentation_id:
+            raise HTTPException(status_code=404, detail="Audience vignette not found.")
+
+        session.delete(vignette)
+        session.commit()
+    except HTTPException:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+    return Response(status_code=204)
+
+
+@router.post(
+    "/{presentation_id}/post-feedback/generate",
+    response_model=PostFeedbackReport,
+)
+async def generate_post_feedback(
+    presentation_id: UUID,
+    payload: PostFeedbackGenerationRequest,
+):
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        vignettes = [
+            vignette
+            for vignette in presentation.audience_vignettes
+            if vignette.prompt.strip()
+        ]
+        if not vignettes:
+            raise HTTPException(status_code=400, detail="Save at least one audience vignette.")
+
+        transcript_chunks = _get_presentation_transcript_chunks(
+            session=session,
+            presentation_id=presentation_id,
+        )
+        if not transcript_chunks:
+            raise HTTPException(status_code=400, detail="No presentation transcript is available.")
+
+        context = _build_post_feedback_context(
+            presentation=presentation,
+            vignettes=vignettes,
+            transcript_chunks=transcript_chunks,
+            model=payload.model,
+        )
+        raw_feedback = await ModelClient().generate_post_feedback(context)
+        normalized_feedback = _normalize_post_feedback(raw_feedback)
+
+        report = PresentationPostFeedbackReport(
+            presentation_id=presentation_id,
+            model=payload.model,
+            status="completed",
+            feedback_data=normalized_feedback,
+            extra_data={
+                "vignetteIds": [str(vignette.id) for vignette in vignettes],
+                "transcriptChunkCount": len(transcript_chunks),
+            },
+        )
+        session.add(report)
+        session.commit()
+        session.refresh(report)
+
+        return _to_post_feedback_report_response(report)
+    except HTTPException:
+        session.rollback()
+        raise
+    except RuntimeError as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=502, detail=f"Unable to generate post feedback: {exc}") from exc
     finally:
         session.close()
 
@@ -745,6 +924,76 @@ def _get_speaker_notes_object_id(slide: PresentationSlide) -> str | None:
     return str(object_id) if object_id else None
 
 
+def _to_post_feedback_response(presentation: Presentation) -> PostFeedbackData:
+    latest_report = max(
+        presentation.post_feedback_reports,
+        key=lambda report: report.updated_at or report.created_at,
+        default=None,
+    )
+    transcript_chunk_count = sum(len(slide.transcript_chunks) for slide in presentation.slides)
+
+    return PostFeedbackData(
+        deckId=str(presentation.id),
+        deckTitle=presentation.title,
+        vignettes=[
+            _to_audience_vignette_response(vignette)
+            for vignette in presentation.audience_vignettes
+        ],
+        feedback=_to_post_feedback_report_response(latest_report) if latest_report else None,
+        transcriptChunkCount=transcript_chunk_count,
+    )
+
+
+def _to_audience_vignette_response(vignette: PresentationAudienceVignette) -> AudienceVignette:
+    return AudienceVignette(
+        id=str(vignette.id),
+        title=vignette.title,
+        prompt=vignette.prompt,
+        sortOrder=vignette.sort_order,
+        createdAt=_datetime_to_iso(vignette.created_at),
+        updatedAt=_datetime_to_iso(vignette.updated_at),
+    )
+
+
+def _to_post_feedback_report_response(
+    report: PresentationPostFeedbackReport | None,
+) -> PostFeedbackReport | None:
+    if report is None:
+        return None
+
+    data = _normalize_post_feedback(report.feedback_data or {})
+    return PostFeedbackReport(
+        id=str(report.id),
+        status=report.status,
+        model=report.model,
+        overallScore=data.get("overallScore"),
+        summary=data.get("summary", ""),
+        themes=[
+            PostFeedbackTheme(
+                id=theme["id"],
+                title=theme["title"],
+                score=theme["score"],
+                summary=theme["summary"],
+                criteria=[
+                    FeedbackCriterion(
+                        label=criterion["label"],
+                        score=criterion["score"],
+                        feedback=criterion["feedback"],
+                    )
+                    for criterion in theme["criteria"]
+                ],
+            )
+            for theme in data["themes"]
+        ],
+        createdAt=_datetime_to_iso(report.created_at),
+        updatedAt=_datetime_to_iso(report.updated_at),
+    )
+
+
+def _datetime_to_iso(value) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
 def _to_builder_response(presentation: Presentation) -> PresentationBuilderData:
     return PresentationBuilderData(
         deckId=str(presentation.id),
@@ -861,6 +1110,150 @@ def _get_slide_transcript_window(
         .all()
     )
     return list(reversed(chunks))
+
+
+def _get_presentation_transcript_chunks(
+    *,
+    session,
+    presentation_id: UUID,
+) -> list[PresentationTranscriptChunk]:
+    return (
+        session.query(PresentationTranscriptChunk)
+        .filter(PresentationTranscriptChunk.presentation_id == presentation_id)
+        .order_by(PresentationTranscriptChunk.chunk_started_at_ms.asc())
+        .all()
+    )
+
+
+def _build_post_feedback_context(
+    *,
+    presentation: Presentation,
+    vignettes: list[PresentationAudienceVignette],
+    transcript_chunks: list[PresentationTranscriptChunk],
+    model: str | None,
+) -> dict:
+    slide_by_id = {slide.id: slide for slide in presentation.slides}
+
+    return {
+        "model": model,
+        "deck": {
+            "id": str(presentation.id),
+            "title": presentation.title,
+        },
+        "audienceVignettes": [
+            {
+                "id": str(vignette.id),
+                "title": vignette.title or f"Audience {index + 1}",
+                "prompt": vignette.prompt,
+            }
+            for index, vignette in enumerate(vignettes)
+        ],
+        "slides": [_build_post_feedback_slide_context(slide) for slide in presentation.slides],
+        "transcript": [
+            {
+                "chunkId": str(chunk.id),
+                "slideId": str(chunk.slide_id),
+                "slideNumber": slide_by_id[chunk.slide_id].slide_index + 1
+                if chunk.slide_id in slide_by_id
+                else None,
+                "startedAtMs": chunk.chunk_started_at_ms,
+                "endedAtMs": chunk.chunk_ended_at_ms,
+                "text": chunk.transcript,
+            }
+            for chunk in transcript_chunks
+        ],
+        "themes": [
+            {
+                "id": theme_id,
+                "title": title,
+            }
+            for theme_id, title in POST_FEEDBACK_THEMES
+        ],
+    }
+
+
+def _build_post_feedback_slide_context(slide: PresentationSlide) -> dict:
+    raw_page = _ensure_readable_slide_context(slide)
+    return {
+        "id": str(slide.id),
+        "number": slide.slide_index + 1,
+        "title": raw_page.get("title") or f"Slide {slide.slide_index + 1}",
+        "slideText": _coerce_text_list(raw_page.get("slideText") or raw_page.get("text") or []),
+        "speakerNotes": str(raw_page.get("speakerNotes") or raw_page.get("notes") or ""),
+        "demoTranscript": _get_demo_transcript_text(slide, raw_page),
+        "imageDescriptions": _coerce_text_list(raw_page.get("imageDescriptions") or []),
+        "timingGoalSeconds": slide.time_per_slide_seconds or 0,
+    }
+
+
+def _normalize_post_feedback(raw_feedback: dict) -> dict:
+    if not isinstance(raw_feedback, dict):
+        raw_feedback = {}
+
+    raw_themes = raw_feedback.get("themes", [])
+    raw_themes_by_id = {
+        str(theme.get("id", "")).strip(): theme
+        for theme in raw_themes
+        if isinstance(theme, dict)
+    }
+    normalized_themes = []
+
+    for theme_id, title in POST_FEEDBACK_THEMES:
+        raw_theme = raw_themes_by_id.get(theme_id, {})
+        criteria = _normalize_post_feedback_criteria(raw_theme.get("criteria", []))
+        if not criteria:
+            criteria = [
+                {
+                    "label": "Evidence",
+                    "score": 0,
+                    "feedback": "The model did not return enough evidence for this theme.",
+                }
+            ]
+
+        normalized_themes.append(
+            {
+                "id": theme_id,
+                "title": str(raw_theme.get("title") or title).strip()[:80],
+                "score": _clamp_score(raw_theme.get("score")),
+                "summary": str(raw_theme.get("summary") or "").strip()[:700],
+                "criteria": criteria,
+            }
+        )
+
+    return {
+        "overallScore": _clamp_score(raw_feedback.get("overallScore")),
+        "summary": str(raw_feedback.get("summary") or "").strip()[:900],
+        "themes": normalized_themes,
+    }
+
+
+def _normalize_post_feedback_criteria(raw_criteria) -> list[dict]:
+    if not isinstance(raw_criteria, list):
+        return []
+
+    criteria = []
+    for index, criterion in enumerate(raw_criteria[:5]):
+        if not isinstance(criterion, dict):
+            continue
+
+        label = str(criterion.get("label") or f"Criterion {index + 1}").strip()[:80]
+        if "body language" in label.lower():
+            continue
+        feedback = str(criterion.get("feedback") or "").strip()[:900]
+        if "body language" in feedback.lower():
+            continue
+        if not feedback:
+            continue
+
+        criteria.append(
+            {
+                "label": label,
+                "score": _clamp_score(criterion.get("score")),
+                "feedback": feedback,
+            }
+        )
+
+    return criteria
 
 
 def _build_feedback_context(
@@ -1376,6 +1769,14 @@ def _clamp_confidence(value) -> float:
     except (TypeError, ValueError):
         return 0.0
     return max(0.0, min(1.0, confidence))
+
+
+def _clamp_score(value) -> int:
+    try:
+        score = int(round(float(value)))
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(100, score))
 
 
 def _default_accessibility_checks() -> list[BuilderAccessibilityCheck]:

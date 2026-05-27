@@ -13,6 +13,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import ButtonAppBar from '../components/AppBar';
+import CollapsiblePanelRail from '../components/CollapsiblePanelRail';
 import SideBar from '../components/SideBar';
 import SlideBuilderPanel from '../components/SlideBuilderPanel';
 import SlideNavigator from '../components/SlideNavigator';
@@ -25,6 +26,7 @@ import { sortSlidesByNumber } from '../utils/slideUtils';
 const DRAWER_WIDTH = 320;
 const NAVIGATOR_MIN_WIDTH = 180;
 const NAVIGATOR_MAX_WIDTH = 560;
+const NAVIGATOR_COLLAPSE_WIDTH = 150;
 const BUILDER_MIN_WIDTH = 420;
 const UNSAVED_CHANGES_MESSAGE =
   "You have unsaved builder schema changes. If you leave without saving, you'll lose your data.";
@@ -63,6 +65,7 @@ function BuilderSchema() {
   const [presentationData, setPresentationData] = useState(null);
   const [activeSlideId, setActiveSlideId] = useState(null);
   const [navigatorWidth, setNavigatorWidth] = useState(360);
+  const [navigatorCollapsed, setNavigatorCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingBuilderSchema, setIsGeneratingBuilderSchema] = useState(false);
   const [deckGenerationProgress, setDeckGenerationProgress] = useState({
@@ -173,7 +176,9 @@ function BuilderSchema() {
     const resizeObserver = new ResizeObserver(([entry]) => {
       const gridWidth = entry.contentRect.width;
 
-      setNavigatorWidth((width) => getClampedNavigatorWidth(width, gridWidth));
+      if (!navigatorCollapsed) {
+        setNavigatorWidth((width) => getClampedNavigatorWidth(width, gridWidth));
+      }
     });
 
     resizeObserver.observe(panelGrid);
@@ -181,7 +186,7 @@ function BuilderSchema() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [navigatorCollapsed]);
 
   useEffect(() => {
     const saveTimeouts = demoTranscriptSaveTimeoutsRef.current;
@@ -739,7 +744,15 @@ function BuilderSchema() {
     const gridRect = panelGridRef.current.getBoundingClientRect();
 
     function handlePointerMove(moveEvent) {
-      setNavigatorWidth(clampNavigatorWidth(moveEvent.clientX - gridRect.left));
+      const nextWidth = moveEvent.clientX - gridRect.left;
+
+      if (nextWidth < NAVIGATOR_COLLAPSE_WIDTH) {
+        setNavigatorCollapsed(true);
+        return;
+      }
+
+      setNavigatorCollapsed(false);
+      setNavigatorWidth(clampNavigatorWidth(nextWidth));
     }
 
     function handlePointerUp() {
@@ -756,11 +769,19 @@ function BuilderSchema() {
 
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      setNavigatorWidth((width) => clampNavigatorWidth(width - step));
+      setNavigatorWidth((width) => {
+        const nextWidth = width - step;
+        if (nextWidth < NAVIGATOR_COLLAPSE_WIDTH) {
+          setNavigatorCollapsed(true);
+          return width;
+        }
+        return clampNavigatorWidth(nextWidth);
+      });
     }
 
     if (event.key === 'ArrowRight') {
       event.preventDefault();
+      setNavigatorCollapsed(false);
       setNavigatorWidth((width) => clampNavigatorWidth(width + step));
     }
   }
@@ -950,61 +971,73 @@ function BuilderSchema() {
               gap: { xs: 2, md: 0 },
               gridTemplateColumns: {
                 xs: '1fr',
-                md: `${navigatorWidth}px 16px minmax(0, 1fr)`,
+                md: navigatorCollapsed
+                  ? '64px minmax(0, 1fr)'
+                  : `${navigatorWidth}px 16px minmax(0, 1fr)`,
               },
+              columnGap: { md: navigatorCollapsed ? 2 : 0 },
               alignItems: 'start',
             }}
           >
-            <Paper
-              elevation={0}
-              sx={{
-                p: 2,
-                border: '1px solid var(--border, #e5e4e7)',
-                backgroundColor: 'var(--surface-raised, #ffffff)',
-                position: { md: 'sticky' },
-                top: { md: 88 },
-                maxHeight: { md: 'calc(100vh - 112px)' },
-                overflowY: 'auto',
-              }}
-            >
-              <SlideNavigator
-                slides={presentationData.slides}
-                activeSlideId={activeSlideId}
-                onSelectSlide={setActiveSlideId}
+            {navigatorCollapsed ? (
+              <CollapsiblePanelRail
+                label="Slides"
+                onExpand={() => setNavigatorCollapsed(false)}
               />
-            </Paper>
+            ) : (
+              <>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    border: '1px solid var(--border, #e5e4e7)',
+                    backgroundColor: 'var(--surface-raised, #ffffff)',
+                    position: { md: 'sticky' },
+                    top: { md: 88 },
+                    maxHeight: { md: 'calc(100vh - 112px)' },
+                    overflowY: 'auto',
+                  }}
+                >
+                  <SlideNavigator
+                    slides={presentationData.slides}
+                    activeSlideId={activeSlideId}
+                    onSelectSlide={setActiveSlideId}
+                  />
+                </Paper>
 
-            <Box
-              role="separator"
-              aria-label="Resize slide navigator"
-              aria-orientation="vertical"
-              aria-valuemin={NAVIGATOR_MIN_WIDTH}
-              aria-valuemax={NAVIGATOR_MAX_WIDTH}
-              aria-valuenow={navigatorWidth}
-              tabIndex={0}
-              onPointerDown={handleResizePointerDown}
-              onKeyDown={handleResizeKeyDown}
-              sx={{
-                display: { xs: 'none', md: 'flex' },
-                alignSelf: 'stretch',
-                justifyContent: 'center',
-                minHeight: 360,
-                cursor: 'col-resize',
-                touchAction: 'none',
-                outline: 'none',
-                '&::before': {
-                  content: '""',
-                  width: 4,
-                  borderRadius: 999,
-                  backgroundColor: 'var(--border, #cbbfda)',
-                  transition: 'background-color 120ms ease, width 120ms ease',
-                },
-                '&:hover::before, &:focus-visible::before': {
-                  width: 6,
-                  backgroundColor: 'var(--interactive-border, #8e72bf)',
-                },
-              }}
-            />
+                <Box
+                  role="separator"
+                  aria-label="Resize slide navigator"
+                  aria-orientation="vertical"
+                  aria-valuemin={NAVIGATOR_MIN_WIDTH}
+                  aria-valuemax={NAVIGATOR_MAX_WIDTH}
+                  aria-valuenow={navigatorWidth}
+                  tabIndex={0}
+                  onPointerDown={handleResizePointerDown}
+                  onKeyDown={handleResizeKeyDown}
+                  sx={{
+                    display: { xs: 'none', md: 'flex' },
+                    alignSelf: 'stretch',
+                    justifyContent: 'center',
+                    minHeight: 360,
+                    cursor: 'col-resize',
+                    touchAction: 'none',
+                    outline: 'none',
+                    '&::before': {
+                      content: '""',
+                      width: 4,
+                      borderRadius: 999,
+                      backgroundColor: 'var(--border, #cbbfda)',
+                      transition: 'background-color 120ms ease, width 120ms ease',
+                    },
+                    '&:hover::before, &:focus-visible::before': {
+                      width: 6,
+                      backgroundColor: 'var(--interactive-border, #8e72bf)',
+                    },
+                  }}
+                />
+              </>
+            )}
 
             <SlideBuilderPanel
               slide={activeSlide}

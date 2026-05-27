@@ -23,6 +23,7 @@ import { sortSlidesByNumber } from '../utils/slideUtils';
 const DRAWER_WIDTH = 320;
 const SLIDE_PANEL_MIN_WIDTH = 320;
 const SLIDE_PANEL_MAX_WIDTH = 760;
+const SLIDE_PANEL_COLLAPSE_WIDTH = 260;
 const FEEDBACK_PANEL_MIN_WIDTH = 420;
 const TRANSCRIPTION_CHUNK_MS = 5000;
 const PRESENTER_CHROME_STORAGE_KEY = 'presentation-schema:show-presenter-chrome';
@@ -52,6 +53,7 @@ function PresentationSchemaPage() {
   const [presentationData, setPresentationData] = useState(null);
   const [activeSlideId, setActiveSlideId] = useState('');
   const [slidePanelWidth, setSlidePanelWidth] = useState(640);
+  const [slidePanelCollapsed, setSlidePanelCollapsed] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerPaused, setIsTimerPaused] = useState(true);
   const [isTranscriptionActive, setIsTranscriptionActive] = useState(false);
@@ -198,7 +200,9 @@ function PresentationSchemaPage() {
     const resizeObserver = new ResizeObserver(([entry]) => {
       const gridWidth = entry.contentRect.width;
 
-      setSlidePanelWidth((width) => getClampedSlidePanelWidth(width, gridWidth));
+      if (!slidePanelCollapsed) {
+        setSlidePanelWidth((width) => getClampedSlidePanelWidth(width, gridWidth));
+      }
     });
 
     resizeObserver.observe(panelGrid);
@@ -206,7 +210,7 @@ function PresentationSchemaPage() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [slidePanelCollapsed]);
 
   useEffect(() => {
     if (!activeDeckId || !presentationData) {
@@ -682,7 +686,15 @@ function PresentationSchemaPage() {
     const gridRect = panelGridRef.current.getBoundingClientRect();
 
     function handlePointerMove(moveEvent) {
-      setSlidePanelWidth(clampSlidePanelWidth(moveEvent.clientX - gridRect.left));
+      const nextWidth = moveEvent.clientX - gridRect.left;
+
+      if (nextWidth < SLIDE_PANEL_COLLAPSE_WIDTH) {
+        setSlidePanelCollapsed(true);
+        return;
+      }
+
+      setSlidePanelCollapsed(false);
+      setSlidePanelWidth(clampSlidePanelWidth(nextWidth));
     }
 
     function handlePointerUp() {
@@ -699,11 +711,19 @@ function PresentationSchemaPage() {
 
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      setSlidePanelWidth((width) => clampSlidePanelWidth(width - step));
+      setSlidePanelWidth((width) => {
+        const nextWidth = width - step;
+        if (nextWidth < SLIDE_PANEL_COLLAPSE_WIDTH) {
+          setSlidePanelCollapsed(true);
+          return width;
+        }
+        return clampSlidePanelWidth(nextWidth);
+      });
     }
 
     if (event.key === 'ArrowRight') {
       event.preventDefault();
+      setSlidePanelCollapsed(false);
       setSlidePanelWidth((width) => clampSlidePanelWidth(width + step));
     }
   }
@@ -790,6 +810,7 @@ function PresentationSchemaPage() {
           previousSlide={previousSlide}
           slidePanelMaxWidth={SLIDE_PANEL_MAX_WIDTH}
           slidePanelMinWidth={SLIDE_PANEL_MIN_WIDTH}
+          slidePanelCollapsed={slidePanelCollapsed}
           slidePanelWidth={slidePanelWidth}
           timerSeconds={timerSeconds}
           topOffset={
@@ -805,6 +826,7 @@ function PresentationSchemaPage() {
           onResizeKeyDown={handleResizeKeyDown}
           onResizePointerDown={handleResizePointerDown}
           onSelectSlide={handleSelectSlide}
+          onShowSlidePanel={() => setSlidePanelCollapsed(false)}
           onTogglePresentation={handleTogglePresentation}
         />
       </Box>

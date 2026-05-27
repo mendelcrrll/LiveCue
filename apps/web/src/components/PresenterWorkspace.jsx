@@ -3,6 +3,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
+import CollapsiblePanelRail from './CollapsiblePanelRail';
 import PresenterFeedbackPanel from './PresenterFeedbackPanel';
 import PresenterSlidePanel from './PresenterSlidePanel';
 
@@ -20,11 +21,13 @@ function PresenterWorkspace({
   onResizeKeyDown,
   onResizePointerDown,
   onSelectSlide,
+  onShowSlidePanel,
   onTogglePresentation,
   panelGridRef,
   previousSlide,
   slidePanelMaxWidth,
   slidePanelMinWidth,
+  slidePanelCollapsed,
   slidePanelWidth,
   timerSeconds,
   topOffset = 32,
@@ -55,9 +58,11 @@ function PresenterWorkspace({
           display: 'grid',
           gridTemplateColumns: {
             xs: '1fr',
-            lg: `${slidePanelWidth}px 16px minmax(0, 1fr)`,
+            lg: slidePanelCollapsed
+              ? '64px minmax(0, 1fr)'
+              : `${slidePanelWidth}px 16px minmax(0, 1fr)`,
           },
-          gap: { xs: 2, lg: 0 },
+          gap: { xs: 2, lg: slidePanelCollapsed ? 2 : 0 },
           alignItems: 'stretch',
           height: {
             lg: `calc((100vh - ${topOffset}px) / ${PRESENTER_WORKSPACE_SCALE})`,
@@ -94,32 +99,38 @@ function PresenterWorkspace({
 
         {activeSlide ? (
           <>
-            <PresenterSlidePanel
-              slide={activeSlide}
-              previousSlide={previousSlide}
-              nextSlide={nextSlide}
-              timerSeconds={timerSeconds}
-              isTimerPaused={isTimerPaused}
-              isRecording={isTranscriptionActive}
-              transcriptionStatus={
-                isTranscriptionActive
-                  ? 'Recording and saving 10-second transcript chunks'
-                  : 'Press play to start timer and transcription'
-              }
-              onToggleTimer={onTogglePresentation}
-              onResetTimer={() => {
-                onResetTimer(activeSlideTimingSeconds);
-              }}
-              onSelectSlide={onSelectSlide}
-            />
+            {slidePanelCollapsed ? (
+              <CollapsiblePanelRail label="Slides" onExpand={onShowSlidePanel} topOffset={0} />
+            ) : (
+              <>
+                <PresenterSlidePanel
+                  slide={activeSlide}
+                  previousSlide={previousSlide}
+                  nextSlide={nextSlide}
+                  timerSeconds={timerSeconds}
+                  isTimerPaused={isTimerPaused}
+                  isRecording={isTranscriptionActive}
+                  transcriptionStatus={
+                    isTranscriptionActive
+                      ? 'Recording and saving 10-second transcript chunks'
+                      : 'Press play to start timer and transcription'
+                  }
+                  onToggleTimer={onTogglePresentation}
+                  onResetTimer={() => {
+                    onResetTimer(activeSlideTimingSeconds);
+                  }}
+                  onSelectSlide={onSelectSlide}
+                />
 
-            <PresenterResizeHandle
-              maxWidth={slidePanelMaxWidth}
-              minWidth={slidePanelMinWidth}
-              width={slidePanelWidth}
-              onPointerDown={onResizePointerDown}
-              onKeyDown={onResizeKeyDown}
-            />
+                <PresenterResizeHandle
+                  maxWidth={slidePanelMaxWidth}
+                  minWidth={slidePanelMinWidth}
+                  width={slidePanelWidth}
+                  onPointerDown={onResizePointerDown}
+                  onKeyDown={onResizeKeyDown}
+                />
+              </>
+            )}
 
             <PresenterFeedbackPanel slide={activeSlide} />
           </>
