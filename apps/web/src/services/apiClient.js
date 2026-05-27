@@ -11,7 +11,10 @@ async function requestJson(path, options = {}) {
 
     try {
       const payload = await response.json();
-      detail = payload.detail ?? detail;
+      const raw = payload.detail;
+      if (raw != null) {
+        detail = typeof raw === 'string' ? raw : JSON.stringify(raw);
+      }
     } catch {
       // Some endpoints return no JSON body on error.
     }

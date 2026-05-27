@@ -19,20 +19,26 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:54332/postgres"
     supabase_url: str = "http://127.0.0.1:54331"
-    supabase_anon_key: str = ""
-    supabase_service_role_key: str = ""
+    supabase_anon_key: str = "sb_publishable_C_wHVoXFg8aIPUnBuqimkQ_yHQ3T-xR"
+    supabase_service_role_key: str = "sb_publishable_C_wHVoXFg8aIPUnBuqimkQ_yHQ3T-xR"
 
-    google_client_id: str = ""
-    google_client_secret: str = ""
-    google_redirect_uri: str = ""
+    # google_client_id: str = "266977271974-mncbna0tc1vc8phim9oafskbuplpeh2u.apps.googleusercontent.com"
+    # google_client_secret: str = "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"
+    google_redirect_uri: str = "http://127.0.0.1:8000/api/auth/google/callback"
+
+    google_client_id: str = "6634794639-he3vltl0v8o0756mqjjv4vi2nf2klrhu.apps.googleusercontent.com"
+    google_client_secret: str = "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"
 
     # Where the browser should land after completing Google OAuth.
-    frontend_oauth_redirect_url: str = "http://localhost:5173/"
+    frontend_oauth_redirect_url: str = "http://127.0.0.1:5173/"
 
     llm_provider: str = ""
     openai_api_key: str = ""
     stt_provider: str = ""
     whisper_base_url: str = "http://127.0.0.1:8081"
+    qwen_embedding_model_name: str = "Qwen/Qwen3-Embedding-0.6B"
+    ollama_base_url: str = "http://localhost:11434"
+    inference_llm_model_name: str = "qwen3:0.6b"
 
 
 @lru_cache
