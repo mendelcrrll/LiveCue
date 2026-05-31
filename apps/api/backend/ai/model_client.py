@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from textwrap import dedent
 from typing import Any
 
+from dotenv import load_dotenv
+
 API_ROOT = Path(__file__).resolve().parents[2]
+
+load_dotenv(API_ROOT / ".env")
+
+DEFAULT_MODEL = "gpt-4o-mini"
+
 
 FEEDBACK_PROMPT = dedent(
     """
@@ -195,36 +203,80 @@ class ModelClient:
 
     async def _generate_json(self, *, prompt: str, context: dict[str, Any]) -> dict[str, Any]:
         import httpx
-
+        from langchain_openai import ChatOpenAI
         from backend.config import get_settings
 
         settings = get_settings()
 
-        payload = {
-            "model": settings.inference_llm_model_name,
-            "messages": [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": json.dumps(context, ensure_ascii=True)},
-            ],
-            "stream": False,
-            "think": False,
-            "format": "json",
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 512,
-            },
-        }
+        if settings.inference_llm_model_name == "OpenAI":
+          api_key = _resolve_openai_api_key()
+          model_name = str(context.get("model") or DEFAULT_MODEL)
+          model = ChatOpenAI(
+              model=model_name,
+              temperature=0.35,
+              api_key=api_key,
+              model_kwargs={"response_format": {"type": "json_object"}},
+          )
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{settings.ollama_base_url}/api/chat",
-                json=payload,
-            )
-            response.raise_for_status()
+          result = await model.ainvoke(
+              [
+                  {"role": "system", "content": prompt},
+                  {
+                      "role": "user",
+                      "content": json.dumps(context, ensure_ascii=True),
+                  },
+              ]
+          )
+          text = _extract_text(result)
+        else:
+          payload = {
+              "model": settings.inference_llm_model_name,
+              "messages": [
+                  {"role": "system", "content": prompt},
+                  {"role": "user", "content": json.dumps(context, ensure_ascii=True)},
+              ],
+              "stream": False,
+              "think": False,
+              "format": "json",
+              "options": {
+                  "temperature": 0.35,
+                  "num_predict": 512,
+              },
+          }
 
-        data = response.json()
-        text = data.get("message", {}).get("content", "")
+          async with httpx.AsyncClient(timeout=300.0) as client:
+              response = await client.post(
+                  f"{settings.ollama_base_url}/api/chat",
+                  json=payload,
+              )
+              response.raise_for_status()
+
+          data = response.json()
+          text = data.get("message", {}).get("content", "")
         return _parse_json(text)
+    
+def _resolve_openai_api_key() -> str:
+    env_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if env_key:
+        return env_key
+
+    raise RuntimeError("OpenAI API key is missing. Set OPENAI_API_KEY in apps/api/.env.")
+
+
+def _extract_text(result: Any) -> str:
+    content = getattr(result, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        chunks: list[str] = []
+        for item in content:
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                chunks.append(item["text"])
+            elif isinstance(item, str):
+                chunks.append(item)
+        return "\n".join(chunks)
+    return str(content)
+
 
 
 def _parse_json(text: str) -> dict[str, Any]:
