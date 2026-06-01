@@ -10,11 +10,12 @@ The project does not currently have production deployment infrastructure. The fi
 infra/
   docker/
     compose.whisper.yml        Runs the local whisper.cpp HTTP service.
+    compose.ollama.yml         Runs the local Ollama service.
     whisper.Dockerfile         Builds the rt-whisper:local image from references/whisper.cpp.
   env/
     README.md                  Environment variable documentation.
   scripts/
-    start-demo.ps1             Starts Supabase, Whisper, FastAPI, and Vite.
+    start-demo.ps1             Starts Supabase, Whisper, Ollama, FastAPI, and Vite.
     stop-demo.ps1              Stops processes started by start-demo.ps1.
 ```
 
@@ -28,6 +29,7 @@ The integrated local demo uses:
 - Local Whisper HTTP service on `http://127.0.0.1:8081`.
 - Google OAuth for deck import and speaker note sync.
 - OpenAI-compatible chat model calls for schema generation and feedback decisions.
+- Ollama service for interacting with local inference models
 
 ## Start The Demo
 
@@ -63,14 +65,16 @@ powershell -ExecutionPolicy Bypass -File infra\scripts\stop-demo.ps1
 - Supabase CLI available through `npx supabase`.
 - Backend virtualenv created at `apps/api/.venv`.
 - Whisper model downloaded to `references/whisper.cpp/models/ggml-base.en.bin`.
+- Ollama service downloaded from `https://ollama.com/download`
 - `apps/api/.env` configured for Google and OpenAI where needed.
 
 ## Local Ports
 
-- Web: `5173`
-- API: `8000`
+- Web:               `5173`
+- API:               `8000`
 - Whisper host port: `8081`
-- Supabase API: `54331`
+- Ollama:            `11434`
+- Supabase API:      `54331`
 - Supabase Postgres: `54332`
 
 Keep these ports stable while demoing because CORS, redirect URIs, and scripts assume them.
