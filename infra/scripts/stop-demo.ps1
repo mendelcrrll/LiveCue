@@ -7,6 +7,7 @@ $DemoPidFile = Join-Path $RepoRoot ".tmp\demo-processes.json"
 $WindowTitles = @(
     "RT Feedback - Supabase",
     "RT Feedback - Whisper",
+    "RT Feedback - Ollama",
     "RT Feedback - FastAPI",
     "RT Feedback - Web"
 )
@@ -50,6 +51,15 @@ try {
     docker compose -f compose.whisper.yml down
 } catch {
     Write-Warning "Could not stop Whisper compose service: $($_.Exception.Message)"
+} finally {
+    Pop-Location
+}
+
+Push-Location $DockerRoot
+try {
+    docker compose -f compose.ollama.yml down
+} catch {
+    Write-Warning "Could not stop Ollama compose service: $($_.Exception.Message)"
 } finally {
     Pop-Location
 }

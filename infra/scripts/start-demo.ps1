@@ -12,6 +12,7 @@ $SupabaseRoot = Join-Path $ApiRoot "supabase"
 $DockerRoot = Join-Path $RepoRoot "infra\docker"
 $WhisperModel = Join-Path $RepoRoot "references\whisper.cpp\models\ggml-base.en.bin"
 $ApiPython = Join-Path $ApiRoot ".venv\Scripts\python.exe"
+$OllamaModel = & $ApiPython -c "from backend.config import get_settings; print(get_settings().inference_llm_model_name)"
 $DemoStateDir = Join-Path $RepoRoot ".tmp"
 $DemoPidFile = Join-Path $DemoStateDir "demo-processes.json"
 $DemoProcesses = @()
@@ -130,6 +131,14 @@ Start-DemoWindow `
     -Command "docker compose -f compose.whisper.yml up"
 
 Wait-ForHttp -Name "Whisper" -Url "http://127.0.0.1:8081" -TimeoutSeconds 180
+
+Write-Host "Ensuring Ollama model '$OllamaModel' is available..."
+ollama pull $OllamaModel
+Start-DemoWindow `
+    -Title "RT Feedback - Ollama" `
+    -WorkingDirectory $DockerRoot `
+    -Command "docker compose -f compose.ollama.yml up"
+Wait-ForHttp -Name "Ollama" -Url "http://127.0.0.1:11434" -TimeoutSeconds 180
 
 Start-DemoWindow `
     -Title "RT Feedback - FastAPI" `

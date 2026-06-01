@@ -203,12 +203,12 @@ class ModelClient:
 
     async def _generate_json(self, *, prompt: str, context: dict[str, Any]) -> dict[str, Any]:
         import httpx
-        from langchain_openai import ChatOpenAI
         from backend.config import get_settings
 
         settings = get_settings()
 
         if settings.inference_llm_model_name == "OpenAI":
+          from langchain_openai import ChatOpenAI
           api_key = _resolve_openai_api_key()
           model_name = str(context.get("model") or DEFAULT_MODEL)
           model = ChatOpenAI(
@@ -249,9 +249,15 @@ class ModelClient:
                   f"{settings.ollama_base_url}/api/chat",
                   json=payload,
               )
-              response.raise_for_status()
+              if response.status_code != 200:
+                  raise RuntimeError(
+                      f"Ollama {response.status_code}: {response.text[:400]}"
+                  )
 
           data = response.json()
+          ollama_error = data.get("error")
+          if ollama_error:
+              raise RuntimeError(f"Ollama error: {ollama_error}")
           text = data.get("message", {}).get("content", "")
         return _parse_json(text)
     
