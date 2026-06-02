@@ -306,6 +306,7 @@ class WorkflowNode(Base):
     node_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_kind: Mapped[str] = mapped_column(String(64), nullable=False, default="manual")
     google_presentation_id: Mapped[str | None] = mapped_column(String(255))
+    owner_user_id: Mapped[str | None] = mapped_column(String(255), index=True)
     system_key: Mapped[str | None] = mapped_column(String(64), unique=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

@@ -204,7 +204,12 @@ async def persist_google_credentials(*, tokens: GoogleTokenResponse) -> str:
     Dev-only in-memory credential persistence.
     Replace with DB storage later.
     """
-    user_id = secrets.token_urlsafe(16)
+    id_token_payload = _decode_id_token_payload(tokens.id_token)
+    user_id = (
+        str(id_token_payload.get("sub") or "").strip()
+        or str(id_token_payload.get("email") or "").strip()
+        or secrets.token_urlsafe(16)
+    )
 
     GOOGLE_CREDENTIALS_BY_USER_ID[user_id] = StoredGoogleCredentials(
         user_id=user_id,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.persistence.models import Presentation, WorkflowNode
@@ -12,10 +12,20 @@ ROOT_SYSTEM_KEY = "workflow-root"
 ROOT_NAME = "Workflow"
 
 
-def get_workflow_tree(session: Session) -> list[dict[str, Any]]:
+def get_workflow_tree(session: Session, *, owner_user_id: str | None) -> list[dict[str, Any]]:
     root = ensure_workflow_root(session)
+    if owner_user_id:
+        query = select(WorkflowNode).where(
+            or_(
+                WorkflowNode.system_key == ROOT_SYSTEM_KEY,
+                WorkflowNode.owner_user_id == owner_user_id,
+            )
+        )
+    else:
+        query = select(WorkflowNode).where(WorkflowNode.system_key == ROOT_SYSTEM_KEY)
+
     nodes = session.scalars(
-        select(WorkflowNode).order_by(WorkflowNode.sort_order.asc(), WorkflowNode.created_at.asc())
+        query.order_by(WorkflowNode.sort_order.asc(), WorkflowNode.created_at.asc())
     ).all()
 
     payload_by_id: dict[UUID, dict[str, Any]] = {
@@ -36,13 +46,20 @@ def get_workflow_tree(session: Session) -> list[dict[str, Any]]:
     return [root_payload] if root_payload is not None else [_serialize_node(root)]
 
 
-def create_workflow_folder(session: Session, parent_id: UUID, name: str) -> WorkflowNode:
-    parent = _require_folder(session, parent_id)
+def create_workflow_folder(
+    session: Session,
+    parent_id: UUID,
+    name: str,
+    *,
+    owner_user_id: str,
+) -> WorkflowNode:
+    parent = _require_folder(session, parent_id, owner_user_id=owner_user_id)
     node = WorkflowNode(
         parent_id=parent.id,
         name=name.strip(),
         node_type="folder",
         source_kind="manual",
+        owner_user_id=owner_user_id,
         sort_order=_next_sort_order(session, parent.id),
     )
     session.add(node)
@@ -59,8 +76,9 @@ def create_workflow_file(
     source_kind: str = "manual",
     google_presentation_id: str | None = None,
     presentation: Presentation | None = None,
+    owner_user_id: str,
 ) -> WorkflowNode:
-    parent = _require_folder(session, parent_id)
+    parent = _require_folder(session, parent_id, owner_user_id=owner_user_id)
     node = WorkflowNode(
         parent_id=parent.id,
         presentation_id=presentation.id if presentation is not None else None,
@@ -68,6 +86,7 @@ def create_workflow_file(
         node_type="file",
         source_kind=source_kind,
         google_presentation_id=google_presentation_id,
+        owner_user_id=owner_user_id,
         sort_order=_next_sort_order(session, parent.id),
     )
     session.add(node)
@@ -76,12 +95,14 @@ def create_workflow_file(
     return node
 
 
-def delete_workflow_node(session: Session, node_id: UUID) -> None:
+def delete_workflow_node(session: Session, node_id: UUID, *, owner_user_id: str) -> None:
     node = session.get(WorkflowNode, node_id)
     if node is None:
         raise ValueError("Workflow node not found.")
     if node.system_key == ROOT_SYSTEM_KEY:
         raise ValueError("The workflow root folder cannot be removed.")
+    if node.owner_user_id != owner_user_id:
+        raise ValueError("Workflow node not found.")
 
     session.delete(node)
     session.commit()
@@ -105,12 +126,14 @@ def ensure_workflow_root(session: Session) -> WorkflowNode:
     return root
 
 
-def _require_folder(session: Session, node_id: UUID) -> WorkflowNode:
+def _require_folder(session: Session, node_id: UUID, *, owner_user_id: str) -> WorkflowNode:
     node = session.get(WorkflowNode, node_id)
     if node is None:
         raise ValueError("Parent folder not found.")
     if node.node_type != "folder":
         raise ValueError("Items can only be created inside folders.")
+    if node.system_key != ROOT_SYSTEM_KEY and node.owner_user_id != owner_user_id:
+        raise ValueError("Parent folder not found.")
     return node
 
 

@@ -69,17 +69,30 @@ POST_FEEDBACK_THEMES = [
 
 
 @router.get("/tree")
-def get_presentation_tree():
+def get_presentation_tree(session_id: str | None = Cookie(default=None, alias="session_id")):
     session = get_session()
+    owner_user_id = _current_user_id(session_id)
 
     try:
-        return {"tree": get_presentation_tree_data(session)}
+        return {"tree": get_presentation_tree_data(session, owner_user_id=owner_user_id)}
     finally:
         session.close()
 
 
-def get_presentation_tree_data(session):
-    return get_workflow_tree(session)
+def get_presentation_tree_data(session, *, owner_user_id: str | None = None):
+    return get_workflow_tree(session, owner_user_id=owner_user_id)
+
+
+def _current_user_id(session_id: str | None) -> str | None:
+    credentials = get_google_credentials_for_session(session_id)
+    return credentials.user_id if credentials is not None else None
+
+
+def _require_current_user_id(session_id: str | None) -> str:
+    user_id = _current_user_id(session_id)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Connect Google and try again.")
+    return user_id
 
 
 @router.get("/{presentation_id}/builder-schema", response_model=PresentationBuilderData)
@@ -612,14 +625,19 @@ async def generate_feedback_decision(
 
 
 @router.post("/folders", response_model=WorkflowNodeResponse, status_code=201)
-def create_folder(payload: WorkflowFolderCreateRequest):
+def create_folder(
+    payload: WorkflowFolderCreateRequest,
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
     session = get_session()
+    owner_user_id = _require_current_user_id(session_id)
 
     try:
         node = create_workflow_folder(
             session=session,
             parent_id=payload.parent_id,
             name=payload.name,
+            owner_user_id=owner_user_id,
         )
         return _to_workflow_node_response(node)
     except ValueError as exc:
@@ -635,6 +653,7 @@ async def create_file(
     session_id: str | None = Cookie(default=None, alias="session_id"),
 ):
     session = get_session()
+    owner_user_id = _require_current_user_id(session_id)
 
     try:
         presentation = None
@@ -661,6 +680,7 @@ async def create_file(
             source_kind=payload.source_kind,
             google_presentation_id=payload.google_presentation_id,
             presentation=presentation,
+            owner_user_id=owner_user_id,
         )
         return _to_workflow_node_response(node)
     except HTTPException:
@@ -677,11 +697,15 @@ async def create_file(
 
 
 @router.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_node(node_id: UUID):
+def delete_node(
+    node_id: UUID,
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
     session = get_session()
+    owner_user_id = _require_current_user_id(session_id)
 
     try:
-        delete_workflow_node(session=session, node_id=node_id)
+        delete_workflow_node(session=session, node_id=node_id, owner_user_id=owner_user_id)
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
