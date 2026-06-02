@@ -171,7 +171,7 @@ def get_auth_session(
 
 def _is_secure_cookie() -> bool:
     settings = get_settings()
-    env = str(getattr(settings, "environment", "")).lower()
+    env = str(settings.api_env).lower()
     return env in {"prod", "production"}
 
 

@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     api_env: str = "development"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cookie_samesite: str = "lax"
 
     database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:54332/postgres"
     supabase_url: str = "http://127.0.0.1:54331"
