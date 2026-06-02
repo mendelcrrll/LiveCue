@@ -34,6 +34,44 @@ const TRANSCRIPTION_CHUNK_MS = 5000;
 const PRESENTER_CHROME_STORAGE_KEY = 'presentation-schema:show-presenter-chrome';
 const FULLSCREEN_WORKSPACE_TOP_OFFSET = 32;
 const CHROME_WORKSPACE_TOP_OFFSET = 92;
+const themedDialogSx = {
+  '& .MuiDialog-paper': {
+    border: '1px solid var(--border, #cbbfda)',
+    backgroundColor: 'var(--surface-raised, #ffffff)',
+    color: 'var(--text, #352b45)',
+    boxShadow: 'var(--shadow)',
+  },
+  '& .MuiDialogTitle-root': {
+    color: 'var(--text-h, #1b1325)',
+    fontWeight: 800,
+    borderBottom: '1px solid var(--border, #cbbfda)',
+  },
+  '& .MuiDialogContent-root': {
+    borderColor: 'var(--border, #cbbfda)',
+    backgroundColor: 'var(--surface-raised, #ffffff)',
+  },
+  '& .MuiDialogActions-root': {
+    gap: 1,
+    px: 3,
+    py: 2,
+    borderTop: '1px solid var(--border, #cbbfda)',
+  },
+};
+const themedTextButtonSx = {
+  color: 'var(--interactive-text, #35205a)',
+  '&:hover': {
+    backgroundColor: 'var(--interactive-bg, #e8def8)',
+  },
+};
+const themedContainedButtonSx = {
+  color: 'var(--primary-contrast, #ffffff)',
+  backgroundColor: 'var(--primary, #4f2d7f)',
+  boxShadow: 'none',
+  '&:hover': {
+    backgroundColor: 'var(--accent, #6b39b0)',
+    boxShadow: 'none',
+  },
+};
 
 function getClampedSlidePanelWidth(width, gridWidth) {
   const maxWidth = Math.max(
@@ -867,17 +905,19 @@ async function getFirstPresentationId() {
 
 function EndSessionDialog({ onClose, onGoHome, onReviewFeedback, open }) {
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" sx={themedDialogSx}>
       <DialogTitle>Presentation session ended</DialogTitle>
       <DialogContent dividers>
-        <Typography variant="body1" sx={{ color: 'var(--text)' }}>
+        <Typography variant="body1" sx={{ color: 'var(--text)', py: 1 }}>
           Your transcript chunks have been saved for this deck. You can review audience feedback now
           or return to the file explorer.
         </Typography>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onGoHome}>Go home</Button>
-        <Button variant="contained" onClick={onReviewFeedback}>
+        <Button onClick={onGoHome} sx={themedTextButtonSx}>
+          Go home
+        </Button>
+        <Button variant="contained" onClick={onReviewFeedback} sx={themedContainedButtonSx}>
           Review feedback
         </Button>
       </DialogActions>
@@ -890,7 +930,7 @@ function TranscriptReviewDialog({ error, isLoading, onClose, open, transcript })
   const fullText = transcript?.text?.trim() ?? '';
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" sx={themedDialogSx}>
       <DialogTitle>Saved transcript</DialogTitle>
       <DialogContent dividers>
         {isLoading ? (
@@ -933,7 +973,9 @@ function TranscriptReviewDialog({ error, isLoading, onClose, open, transcript })
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose} sx={themedTextButtonSx}>
+          Close
+        </Button>
       </DialogActions>
     </Dialog>
   );

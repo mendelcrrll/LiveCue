@@ -9,6 +9,24 @@ import PresenterFeedbackPanel from './PresenterFeedbackPanel';
 import PresenterSlidePanel from './PresenterSlidePanel';
 
 const PRESENTER_WORKSPACE_SCALE = 0.95;
+const presenterActionButtonSx = {
+  borderColor: 'var(--interactive-border, #8e72bf)',
+  color: 'var(--text-h, #1b1325)',
+  backgroundColor: 'var(--surface, #f7f4fb)',
+  '&:hover': {
+    borderColor: 'var(--interactive-border, #8e72bf)',
+    backgroundColor: 'var(--interactive-bg-hover, #ddd0f5)',
+  },
+};
+const presenterPrimaryButtonSx = {
+  color: 'var(--primary-contrast, #ffffff)',
+  backgroundColor: 'var(--primary, #4f2d7f)',
+  boxShadow: 'none',
+  '&:hover': {
+    backgroundColor: 'var(--accent, #6b39b0)',
+    boxShadow: 'none',
+  },
+};
 
 function PresenterWorkspace({
   activeSlide,
@@ -47,7 +65,7 @@ function PresenterWorkspace({
           lg: 1440 / PRESENTER_WORKSPACE_SCALE,
         },
         mx: 'auto',
-        mt: 0,
+        mt: { xs: 1.5, lg: 2 },
         minHeight: 0,
         transform: { lg: `scale(${PRESENTER_WORKSPACE_SCALE})` },
         transformOrigin: 'top left',
@@ -80,17 +98,35 @@ function PresenterWorkspace({
           spacing={1}
           alignItems="center"
           justifyContent="space-between"
-          sx={{ gridColumn: '1 / -1', mb: transcriptionError ? 0 : 1 }}
+          useFlexGap
+          flexWrap="wrap"
+          sx={{
+            gridColumn: '1 / -1',
+            mb: 1.5,
+            p: 1.25,
+            border: '1px solid var(--border, #cbbfda)',
+            backgroundColor: 'var(--surface-raised, #ffffff)',
+            color: 'var(--text, #352b45)',
+            boxShadow: 'var(--shadow)',
+          }}
         >
           <Box sx={{ minWidth: 0 }}>
             {transcriptionError && <Alert severity="error">{transcriptionError}</Alert>}
           </Box>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            useFlexGap
+            flexWrap="wrap"
+            sx={{ flexShrink: 0, ml: 'auto' }}
+          >
             <Button
               variant="outlined"
               size="small"
               startIcon={<ArticleOutlinedIcon />}
               onClick={onReviewTranscript}
+              sx={presenterActionButtonSx}
             >
               Review transcript
             </Button>
@@ -99,6 +135,7 @@ function PresenterWorkspace({
               size="small"
               startIcon={<StopCircleOutlinedIcon />}
               onClick={onEndSession}
+              sx={presenterPrimaryButtonSx}
             >
               End session
             </Button>
