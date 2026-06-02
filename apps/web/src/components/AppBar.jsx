@@ -8,7 +8,7 @@ import ArrowBackOutlinedIcon from '@mui/icons-material/ArrowBackOutlined';
 import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useNavigate } from 'react-router-dom';
-import { requestJson } from '../services/apiClient';
+import { API_BASE_URL, requestJson } from '../services/apiClient';
 import SearchBar from './SearchBar';
 import ProfileButton from './ProfileButton';
 
@@ -30,7 +30,7 @@ export default function PrimarySearchAppBar({
   const handleBackClick = onBackClick ?? (() => navigate(-1));
   const handleHomeClick = onHomeClick ?? (() => navigate('/'));
   const handleGoogleConnect = () => {
-    window.location.assign('http://127.0.0.1:8000/api/auth/google/login');
+    window.location.assign(`${API_BASE_URL}/api/auth/google/login`);
   };
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export default function PrimarySearchAppBar({
 
     async function loadAuthState() {
       try {
-        const session = await requestJson('http://127.0.0.1:8000/api/auth/session');
+        const session = await requestJson('/api/auth/session');
 
         if (isActive) {
           setAuthState({

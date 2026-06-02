@@ -21,7 +21,7 @@ import WorkflowActionButtons from '../components/WorkflowActionButtons';
 import WorkflowRequestDialog from '../components/WorkflowRequestDialog';
 import { findNodeById } from '../data/presentationTree';
 import PresentationWorkflowService from '../services/PresentationWorkflowService';
-import { requestJson } from '../services/apiClient';
+import { API_BASE_URL, requestJson } from '../services/apiClient';
 
 const DRAWER_WIDTH = 320;
 
@@ -234,7 +234,7 @@ function Home() {
   }
 
   function handleGoogleConnect() {
-    window.location.assign('http://127.0.0.1:8000/api/auth/google/login');
+    window.location.assign(`${API_BASE_URL}/api/auth/google/login`);
   }
 
   async function refreshCardThumbnail(event, item) {
