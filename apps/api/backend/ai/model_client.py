@@ -207,10 +207,25 @@ class ModelClient:
 
         settings = get_settings()
 
-        if settings.inference_llm_model_name == "OpenAI":
+        llm_provider = (settings.llm_provider or "").strip().lower()
+        use_openai = (
+            llm_provider == "openai"
+            or settings.inference_llm_model_name.strip().lower() == "openai"
+        )
+
+        if use_openai:
           from langchain_openai import ChatOpenAI
-          api_key = _resolve_openai_api_key()
-          model_name = str(context.get("model") or DEFAULT_MODEL)
+          api_key = _resolve_openai_api_key(settings.openai_api_key)
+          configured_model = settings.inference_llm_model_name.strip()
+          model_name = str(
+              context.get("model")
+              or (
+                  DEFAULT_MODEL
+                  if configured_model.lower() == "openai"
+                  else configured_model
+              )
+              or DEFAULT_MODEL
+          )
           model = ChatOpenAI(
               model=model_name,
               temperature=0.35,
@@ -261,8 +276,8 @@ class ModelClient:
           text = data.get("message", {}).get("content", "")
         return _parse_json(text)
     
-def _resolve_openai_api_key() -> str:
-    env_key = os.getenv("OPENAI_API_KEY", "").strip()
+def _resolve_openai_api_key(settings_key: str = "") -> str:
+    env_key = (settings_key or os.getenv("OPENAI_API_KEY", "")).strip()
     if env_key:
         return env_key
 
