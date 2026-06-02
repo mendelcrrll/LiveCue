@@ -3,56 +3,62 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import FeedbackCardShell from './FeedbackCardShell';
 
-const MOCK_SLIDE_TIMINGS = [
-  { slideId: 'mock-time-1', slideNumber: 1, durationMs: 42000, goalMs: 45000, status: 'on_track' },
-  { slideId: 'mock-time-2', slideNumber: 2, durationMs: 68000, goalMs: 60000, status: 'on_track' },
-  { slideId: 'mock-time-3', slideNumber: 3, durationMs: 92000, goalMs: 65000, status: 'over_time' },
-  { slideId: 'mock-time-4', slideNumber: 4, durationMs: 31000, goalMs: 55000, status: 'under_time' },
-  { slideId: 'mock-time-5', slideNumber: 5, durationMs: 58000, goalMs: 60000, status: 'on_track' },
-  { slideId: 'mock-time-6', slideNumber: 6, durationMs: 73000, goalMs: 70000, status: 'on_track' },
-];
-
 function TimingCard({ timingSummary, expanded, ...cardProps }) {
-  const realSlideTimings = getSlideTimings(timingSummary);
-  const slideTimings = realSlideTimings.length > 0 ? realSlideTimings : MOCK_SLIDE_TIMINGS;
-  const totalSeconds = Math.round(
-    (realSlideTimings.length > 0
-      ? Number(timingSummary?.durationMs ?? 0)
-      : MOCK_SLIDE_TIMINGS.reduce((total, slide) => total + slide.durationMs, 0)) / 1000
-  );
+  const slideTimings = getSlideTimings(timingSummary);
+  const totalSeconds = Math.round(Number(timingSummary?.durationMs ?? 0) / 1000);
 
   return (
     <FeedbackCardShell title="Timing" expanded={expanded} {...cardProps}>
       <Box sx={{ height: '100%', p: expanded ? 2.5 : 0.75, minHeight: 0 }}>
-        <Box
-          sx={{
-            display: expanded ? 'grid' : 'block',
-            gridTemplateColumns: expanded ? 'minmax(0, 1.7fr) minmax(260px, 0.9fr)' : 'none',
-            gap: expanded ? 3 : 0,
-            height: '100%',
-            minHeight: 0,
-          }}
-        >
-          <TimingSplitChart
-            expanded={expanded}
-            isMock={realSlideTimings.length === 0}
-            slideTimings={slideTimings}
-            totalSeconds={totalSeconds}
-          />
+        {slideTimings.length === 0 ? (
+          <EmptyTimingState />
+        ) : (
+          <Box
+            sx={{
+              display: expanded ? 'grid' : 'block',
+              gridTemplateColumns: expanded ? 'minmax(0, 1.7fr) minmax(260px, 0.9fr)' : 'none',
+              gap: expanded ? 3 : 0,
+              height: '100%',
+              minHeight: 0,
+            }}
+          >
+            <TimingSplitChart
+              expanded={expanded}
+              slideTimings={slideTimings}
+              totalSeconds={totalSeconds}
+            />
           {expanded && (
             <TimingContextPanel
-              isMock={realSlideTimings.length === 0}
               slideTimings={slideTimings}
               totalSeconds={totalSeconds}
             />
           )}
-        </Box>
+          </Box>
+        )}
       </Box>
     </FeedbackCardShell>
   );
 }
 
-function TimingSplitChart({ expanded, isMock, slideTimings, totalSeconds }) {
+function EmptyTimingState() {
+  return (
+    <Stack
+      spacing={1}
+      alignItems="center"
+      justifyContent="center"
+      sx={{ height: '100%', minHeight: 180, textAlign: 'center', color: 'var(--text-muted)' }}
+    >
+      <Typography variant="subtitle2" sx={{ color: 'var(--text-h)', fontWeight: 800 }}>
+        No timing data yet
+      </Typography>
+      <Typography variant="body2">
+        Record and end a presentation session to review timing by slide.
+      </Typography>
+    </Stack>
+  );
+}
+
+function TimingSplitChart({ expanded, slideTimings, totalSeconds }) {
   const chartSlides = slideTimings.slice(0, expanded ? 24 : 14);
   const values = chartSlides.map((slide) => slide.durationMs / 1000);
   const maxValue = Math.max(90, ...values);
@@ -129,7 +135,7 @@ function TimingSplitChart({ expanded, isMock, slideTimings, totalSeconds }) {
           {formatDuration(totalSeconds)}
         </text>
         <text x={plot.left + plotWidth + 10} y={plot.top + 46} fill="var(--text-muted)" fontSize={expanded ? 10 : 9}>
-          {isMock ? 'mock total' : 'total'}
+          total
         </text>
         {expanded && (
           <>
@@ -146,7 +152,7 @@ function TimingSplitChart({ expanded, isMock, slideTimings, totalSeconds }) {
   );
 }
 
-function TimingContextPanel({ isMock, slideTimings, totalSeconds }) {
+function TimingContextPanel({ slideTimings, totalSeconds }) {
   const under = slideTimings.filter((slide) => slide.status === 'under_time').length;
   const over = slideTimings.filter((slide) => slide.status === 'over_time').length;
   const onTrack = slideTimings.length - under - over;
@@ -165,7 +171,7 @@ function TimingContextPanel({ isMock, slideTimings, totalSeconds }) {
     >
       <Box>
         <Typography variant="overline" sx={{ color: 'var(--text-muted)', letterSpacing: 0 }}>
-          {isMock ? 'Preview insight' : 'Model context'}
+          Model context
         </Typography>
         <Typography variant="h5" sx={{ color: 'var(--text-h)', fontWeight: 800 }}>
           {formatDuration(totalSeconds)}

@@ -5,60 +5,65 @@ import FeedbackCardShell from './FeedbackCardShell';
 
 const SLOW_WPM = 110;
 const FAST_WPM = 160;
-const MOCK_SLIDE_PACES = [
-  { slideId: 'mock-slide-1', slideNumber: 1, wordsPerMinute: 118 },
-  { slideId: 'mock-slide-2', slideNumber: 2, wordsPerMinute: 142 },
-  { slideId: 'mock-slide-3', slideNumber: 3, wordsPerMinute: 154 },
-  { slideId: 'mock-slide-4', slideNumber: 4, wordsPerMinute: 101 },
-  { slideId: 'mock-slide-5', slideNumber: 5, wordsPerMinute: 168 },
-  { slideId: 'mock-slide-6', slideNumber: 6, wordsPerMinute: 137 },
-];
 
 function PaceCard({ summary, expanded, ...cardProps }) {
-  const realSlidePaces = getSlidePaces(summary);
-  const slidePaces = realSlidePaces.length > 0 ? realSlidePaces : MOCK_SLIDE_PACES;
-  const averagePace =
-    realSlidePaces.length > 0
-      ? Number(summary?.wordsPerMinute ?? 0)
-      : Math.round(
-          MOCK_SLIDE_PACES.reduce((total, slide) => total + slide.wordsPerMinute, 0) /
-            MOCK_SLIDE_PACES.length
-        );
+  const slidePaces = getSlidePaces(summary);
+  const averagePace = Number(summary?.wordsPerMinute ?? 0);
 
   return (
     <FeedbackCardShell title="Pace" expanded={expanded} {...cardProps}>
       <Box sx={{ height: '100%', p: expanded ? 2.5 : 0.75, minHeight: 0 }}>
-        <Box
-          sx={{
-            display: expanded ? 'grid' : 'block',
-            gridTemplateColumns: expanded ? 'minmax(0, 1.7fr) minmax(260px, 0.9fr)' : 'none',
-            gap: expanded ? 3 : 0,
-            height: '100%',
-            minHeight: 0,
-            alignItems: 'stretch',
-          }}
-        >
-          <PaceSplitChart
-            averagePace={averagePace}
-            expanded={expanded}
-            isMock={realSlidePaces.length === 0}
-            slidePaces={slidePaces}
-          />
+        {slidePaces.length === 0 ? (
+          <EmptyPaceState />
+        ) : (
+          <Box
+            sx={{
+              display: expanded ? 'grid' : 'block',
+              gridTemplateColumns: expanded ? 'minmax(0, 1.7fr) minmax(260px, 0.9fr)' : 'none',
+              gap: expanded ? 3 : 0,
+              height: '100%',
+              minHeight: 0,
+              alignItems: 'stretch',
+            }}
+          >
+            <PaceSplitChart
+              averagePace={averagePace}
+              expanded={expanded}
+              slidePaces={slidePaces}
+            />
           {expanded && (
             <PaceContextPanel
               averagePace={averagePace}
-              isMock={realSlidePaces.length === 0}
               slidePaces={slidePaces}
               summary={summary}
             />
           )}
-        </Box>
+          </Box>
+        )}
       </Box>
     </FeedbackCardShell>
   );
 }
 
-function PaceSplitChart({ averagePace, expanded, isMock, slidePaces }) {
+function EmptyPaceState() {
+  return (
+    <Stack
+      spacing={1}
+      alignItems="center"
+      justifyContent="center"
+      sx={{ height: '100%', minHeight: 180, textAlign: 'center', color: 'var(--text-muted)' }}
+    >
+      <Typography variant="subtitle2" sx={{ color: 'var(--text-h)', fontWeight: 800 }}>
+        No pace data yet
+      </Typography>
+      <Typography variant="body2">
+        Record and end a presentation session to review words-per-minute by slide.
+      </Typography>
+    </Stack>
+  );
+}
+
+function PaceSplitChart({ averagePace, expanded, slidePaces }) {
   const chartSlides = slidePaces.slice(0, expanded ? 24 : 14);
   const values = chartSlides.map((slide) => slide.wordsPerMinute);
   const minValue = Math.min(90, ...values, averagePace);
@@ -211,7 +216,7 @@ function PaceSplitChart({ averagePace, expanded, isMock, slidePaces }) {
           fill="var(--text-muted)"
           fontSize={expanded ? 10 : 9}
         >
-          {isMock ? 'mock avg' : 'avg WPM'}
+          avg WPM
         </text>
         {expanded && (
           <>
@@ -228,7 +233,7 @@ function PaceSplitChart({ averagePace, expanded, isMock, slidePaces }) {
   );
 }
 
-function PaceContextPanel({ averagePace, isMock, slidePaces, summary }) {
+function PaceContextPanel({ averagePace, slidePaces, summary }) {
   const slowSlides = slidePaces.filter((slide) => slide.wordsPerMinute < SLOW_WPM);
   const fastSlides = slidePaces.filter((slide) => slide.wordsPerMinute > FAST_WPM);
   const steadySlides = slidePaces.length - slowSlides.length - fastSlides.length;
@@ -247,7 +252,7 @@ function PaceContextPanel({ averagePace, isMock, slidePaces, summary }) {
     >
       <Box>
         <Typography variant="overline" sx={{ color: 'var(--text-muted)', letterSpacing: 0 }}>
-          {isMock ? 'Preview insight' : 'Model context'}
+          Model context
         </Typography>
         <Typography variant="h5" sx={{ color: 'var(--text-h)', fontWeight: 800 }}>
           {Math.round(averagePace)} WPM

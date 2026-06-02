@@ -3,7 +3,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
-import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined';
+import StopCircleOutlinedIcon from '@mui/icons-material/StopCircleOutlined';
 import CollapsiblePanelRail from './CollapsiblePanelRail';
 import PresenterFeedbackPanel from './PresenterFeedbackPanel';
 import PresenterSlidePanel from './PresenterSlidePanel';
@@ -19,11 +19,11 @@ function PresenterWorkspace({
   onResetTimer,
   onResizeKeyDown,
   onResizePointerDown,
+  onEndSession,
   onSelectSlide,
   onShowSlidePanel,
   onTogglePresentation,
   onReviewTranscript,
-  onViewPostFeedback,
   panelGridRef,
   previousSlide,
   slidePanelMaxWidth,
@@ -97,10 +97,10 @@ function PresenterWorkspace({
             <Button
               variant="contained"
               size="small"
-              startIcon={<RateReviewOutlinedIcon />}
-              onClick={onViewPostFeedback}
+              startIcon={<StopCircleOutlinedIcon />}
+              onClick={onEndSession}
             >
-              Post feedback
+              End session
             </Button>
           </Stack>
         </Stack>

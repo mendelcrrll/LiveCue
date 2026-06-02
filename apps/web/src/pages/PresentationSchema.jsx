@@ -67,6 +67,7 @@ function PresentationSchemaPage() {
   const [fullTranscript, setFullTranscript] = useState(null);
   const [fullTranscriptLoading, setFullTranscriptLoading] = useState(false);
   const [fullTranscriptError, setFullTranscriptError] = useState('');
+  const [sessionEndDialogOpen, setSessionEndDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isPresenterChromeVisible, setIsPresenterChromeVisible] = useState(() =>
@@ -670,6 +671,12 @@ function PresentationSchemaPage() {
     }
   }
 
+  function handleEndSession() {
+    setIsTimerPaused(true);
+    stopTranscriptionCapture();
+    setSessionEndDialogOpen(true);
+  }
+
   function clampSlidePanelWidth(width) {
     const gridWidth = panelGridRef.current?.clientWidth ?? SLIDE_PANEL_MAX_WIDTH + FEEDBACK_PANEL_MIN_WIDTH;
     return getClampedSlidePanelWidth(width, gridWidth);
@@ -819,13 +826,13 @@ function PresentationSchemaPage() {
             setIsTimerPaused(true);
             stopTranscriptionCapture();
           }}
+          onEndSession={handleEndSession}
           onReviewTranscript={handleReviewTranscript}
           onResizeKeyDown={handleResizeKeyDown}
           onResizePointerDown={handleResizePointerDown}
           onSelectSlide={handleSelectSlide}
           onShowSlidePanel={() => setSlidePanelCollapsed(false)}
           onTogglePresentation={handleTogglePresentation}
-          onViewPostFeedback={handleViewPostFeedback}
         />
         <TranscriptReviewDialog
           open={transcriptDialogOpen}
@@ -833,6 +840,18 @@ function PresentationSchemaPage() {
           isLoading={fullTranscriptLoading}
           error={fullTranscriptError}
           onClose={() => setTranscriptDialogOpen(false)}
+        />
+        <EndSessionDialog
+          open={sessionEndDialogOpen}
+          onClose={() => setSessionEndDialogOpen(false)}
+          onGoHome={() => {
+            setSessionEndDialogOpen(false);
+            navigate('/');
+          }}
+          onReviewFeedback={() => {
+            setSessionEndDialogOpen(false);
+            handleViewPostFeedback();
+          }}
         />
       </Box>
     </Box>
@@ -844,6 +863,26 @@ async function getFirstPresentationId() {
   const tree = Array.isArray(payload.tree) ? payload.tree : [];
 
   return findFirstPresentationId(tree);
+}
+
+function EndSessionDialog({ onClose, onGoHome, onReviewFeedback, open }) {
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>Presentation session ended</DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="body1" sx={{ color: 'var(--text)' }}>
+          Your transcript chunks have been saved for this deck. You can review audience feedback now
+          or return to the file explorer.
+        </Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onGoHome}>Go home</Button>
+        <Button variant="contained" onClick={onReviewFeedback}>
+          Review feedback
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
 }
 
 function TranscriptReviewDialog({ error, isLoading, onClose, open, transcript }) {

@@ -13,6 +13,7 @@ import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutl
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined';
 import SlideshowOutlinedIcon from '@mui/icons-material/SlideshowOutlined';
 import ButtonAppBar from '../components/AppBar';
 import SideBar from '../components/SideBar';
@@ -222,6 +223,19 @@ function Home() {
     }
 
     navigate(`/builder/${item.presentationId}`);
+  }
+
+  function openPostFeedback(item) {
+    if (!item?.presentationId) {
+      return;
+    }
+
+    if (isLockedPresentation(item)) {
+      promptGoogleSignIn();
+      return;
+    }
+
+    navigate(`/feedback-page/${item.presentationId}`);
   }
 
   function isLockedPresentation(item) {
@@ -592,22 +606,35 @@ function Home() {
                               ? 'Open this deck in BuilderSchema to configure slide goals, timing, and accessibility checks.'
                               : 'This file is not linked to a presentation yet.'}
                           </Typography>
-                          <Button
-                            variant="contained"
-                            startIcon={isLocked ? <LockOutlinedIcon /> : <LaunchOutlinedIcon />}
-                            disabled={!item.presentationId}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (isLocked) {
-                                promptGoogleSignIn();
-                              } else {
-                                openBuilderSchema(item);
-                              }
-                            }}
-                            sx={{ alignSelf: 'flex-start' }}
-                          >
-                            {isLocked ? 'Sign in' : 'Edit'}
-                          </Button>
+                          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                            <Button
+                              variant="contained"
+                              startIcon={isLocked ? <LockOutlinedIcon /> : <LaunchOutlinedIcon />}
+                              disabled={!item.presentationId}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (isLocked) {
+                                  promptGoogleSignIn();
+                                } else {
+                                  openBuilderSchema(item);
+                                }
+                              }}
+                            >
+                              {isLocked ? 'Sign in' : 'Edit'}
+                            </Button>
+                            {!isLocked && item.presentationId && (
+                              <Button
+                                variant="outlined"
+                                startIcon={<RateReviewOutlinedIcon />}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openPostFeedback(item);
+                                }}
+                              >
+                                Feedback
+                              </Button>
+                            )}
+                          </Stack>
                         </Stack>
                       </Box>
                     )}
