@@ -364,6 +364,7 @@ function Home() {
   const breadcrumb = selectedContext.path.map((node) => node.name).join(' / ');
   const activeFolder = selectedNode.type === 'folder' ? selectedNode : selectedParent;
   const visibleItems = activeFolder?.children ?? [];
+  const hasVisibleItems = visibleItems.length > 0;
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
       <ButtonAppBar
@@ -471,19 +472,20 @@ function Home() {
             </Box>
           </Stack>
 
-          <Box
-            sx={{
-              display: 'grid',
-              gap: 2.5,
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'repeat(2, minmax(0, 0.58fr))',
-                xl: 'repeat(3, minmax(150px, 0.58fr))',
-              },
-              justifyContent: 'start',
-            }}
-          >
-            {visibleItems.map((item) => {
+          {hasVisibleItems ? (
+            <Box
+              sx={{
+                display: 'grid',
+                gap: 2.5,
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: 'repeat(2, minmax(0, 0.58fr))',
+                  xl: 'repeat(3, minmax(150px, 0.58fr))',
+                },
+                justifyContent: 'start',
+              }}
+            >
+              {visibleItems.map((item) => {
               const isSelected = item.id === selectedNode.id;
               const isFolder = item.type === 'folder';
               const isLocked = isLockedPresentation(item);
@@ -626,8 +628,15 @@ function Home() {
                   </Stack>
                 </Paper>
               );
-            })}
-          </Box>
+              })}
+            </Box>
+          ) : (
+            <EmptyWorkflowState
+              isAuthenticated={authState.isAuthenticated}
+              onGoogleConnect={handleGoogleConnect}
+              onRequestSlides={() => setActionMode('slides')}
+            />
+          )}
         </Stack>
       </Box>
       {actionMode && (
@@ -646,3 +655,38 @@ function Home() {
 }
 
 export default Home;
+
+function EmptyWorkflowState({ isAuthenticated, onGoogleConnect, onRequestSlides }) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        minHeight: 'calc(100vh - 220px)',
+        display: 'grid',
+        placeItems: 'center',
+        p: { xs: 3, md: 5 },
+        border: '1px solid var(--border, #e5e4e7)',
+        backgroundColor: 'var(--surface-raised, #ffffff)',
+      }}
+    >
+      <Stack spacing={2} alignItems="center" sx={{ maxWidth: 520, textAlign: 'center' }}>
+        <LockOutlinedIcon sx={{ fontSize: 56, color: 'var(--primary)' }} />
+        <Typography variant="h5" sx={{ color: 'var(--text-h)', fontWeight: 800 }}>
+          {isAuthenticated ? 'No saved slide decks yet' : 'Connect Google to load your slides'}
+        </Typography>
+        <Typography variant="body1" sx={{ color: 'var(--text-muted)' }}>
+          {isAuthenticated
+            ? 'Import a Google Slides deck to start building presenter goals and live feedback.'
+            : 'Sign in so Live Cue can show only the presentations you imported and keep your workspace separate from everyone else.'}
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={isAuthenticated ? <SlideshowOutlinedIcon /> : <LockOutlinedIcon />}
+          onClick={isAuthenticated ? onRequestSlides : onGoogleConnect}
+        >
+          {isAuthenticated ? 'Import Google Slides' : 'Sign in with Google'}
+        </Button>
+      </Stack>
+    </Paper>
+  );
+}

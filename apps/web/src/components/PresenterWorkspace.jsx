@@ -2,7 +2,8 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
-import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
+import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
+import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined';
 import CollapsiblePanelRail from './CollapsiblePanelRail';
 import PresenterFeedbackPanel from './PresenterFeedbackPanel';
 import PresenterSlidePanel from './PresenterSlidePanel';
@@ -14,15 +15,15 @@ function PresenterWorkspace({
   activeSlideTimingSeconds,
   isTimerPaused,
   isTranscriptionActive,
-  isDeletingTranscripts,
   nextSlide,
-  onDeleteTranscripts,
   onResetTimer,
   onResizeKeyDown,
   onResizePointerDown,
   onSelectSlide,
   onShowSlidePanel,
   onTogglePresentation,
+  onReviewTranscript,
+  onViewPostFeedback,
   panelGridRef,
   previousSlide,
   slidePanelMaxWidth,
@@ -84,17 +85,24 @@ function PresenterWorkspace({
           <Box sx={{ minWidth: 0 }}>
             {transcriptionError && <Alert severity="error">{transcriptionError}</Alert>}
           </Box>
-          <Button
-            variant="outlined"
-            color="error"
-            size="small"
-            startIcon={<DeleteOutlineOutlinedIcon />}
-            onClick={onDeleteTranscripts}
-            disabled={isDeletingTranscripts}
-            sx={{ flexShrink: 0 }}
-          >
-            {isDeletingTranscripts ? 'Deleting...' : 'Delete transcripts'}
-          </Button>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ArticleOutlinedIcon />}
+              onClick={onReviewTranscript}
+            >
+              Review transcript
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<RateReviewOutlinedIcon />}
+              onClick={onViewPostFeedback}
+            >
+              Post feedback
+            </Button>
+          </Stack>
         </Stack>
 
         {activeSlide ? (

@@ -125,6 +125,52 @@ def delete_presentation_transcript_chunks(presentation_id: UUID):
         session.close()
 
 
+@router.get("/presentations/{presentation_id}/transcript")
+def get_presentation_transcript(presentation_id: UUID):
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        chunks = (
+            session.query(PresentationTranscriptChunk)
+            .filter(PresentationTranscriptChunk.presentation_id == presentation_id)
+            .order_by(
+                PresentationTranscriptChunk.chunk_started_at_ms.asc(),
+                PresentationTranscriptChunk.created_at.asc(),
+            )
+            .all()
+        )
+
+        serialized_chunks = [
+            {
+                "id": str(chunk.id),
+                "presentationId": str(chunk.presentation_id),
+                "slideId": str(chunk.slide_id),
+                "slideNumber": chunk.slide.slide_index + 1 if chunk.slide is not None else None,
+                "chunkStartedAtMs": chunk.chunk_started_at_ms,
+                "chunkEndedAtMs": chunk.chunk_ended_at_ms,
+                "text": chunk.transcript,
+            }
+            for chunk in chunks
+        ]
+
+        return {
+            "presentationId": str(presentation_id),
+            "chunkCount": len(serialized_chunks),
+            "text": "\n\n".join(
+                chunk["text"].strip()
+                for chunk in serialized_chunks
+                if chunk["text"].strip()
+            ),
+            "chunks": serialized_chunks,
+        }
+    finally:
+        session.close()
+
+
 @router.get("/presentations/{presentation_id}/cadence")
 def get_presentation_cadence(presentation_id: UUID):
     session = get_session()

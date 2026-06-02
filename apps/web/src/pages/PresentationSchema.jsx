@@ -4,7 +4,12 @@ import FullscreenOutlinedIcon from '@mui/icons-material/FullscreenOutlined';
 import MenuOpenOutlinedIcon from '@mui/icons-material/MenuOpenOutlined';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import Dialog from '@mui/material/Dialog';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogActions from '@mui/material/DialogActions';
 import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Toolbar from '@mui/material/Toolbar';
@@ -57,8 +62,11 @@ function PresentationSchemaPage() {
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerPaused, setIsTimerPaused] = useState(true);
   const [isTranscriptionActive, setIsTranscriptionActive] = useState(false);
-  const [isDeletingTranscripts, setIsDeletingTranscripts] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState('');
+  const [transcriptDialogOpen, setTranscriptDialogOpen] = useState(false);
+  const [fullTranscript, setFullTranscript] = useState(null);
+  const [fullTranscriptLoading, setFullTranscriptLoading] = useState(false);
+  const [fullTranscriptError, setFullTranscriptError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isPresenterChromeVisible, setIsPresenterChromeVisible] = useState(() =>
@@ -350,19 +358,6 @@ function PresentationSchemaPage() {
   useEffect(() => {
     return () => {
       stopTranscriptionCapture();
-      deleteTranscriptsForActiveDeck({ keepalive: true, showErrors: false });
-    };
-  }, []);
-
-  useEffect(() => {
-    function handlePresenterViewExit() {
-      deleteTranscriptsForActiveDeck({ keepalive: true, showErrors: false });
-    }
-
-    window.addEventListener('beforeunload', handlePresenterViewExit);
-
-    return () => {
-      window.removeEventListener('beforeunload', handlePresenterViewExit);
     };
   }, []);
 
@@ -419,7 +414,6 @@ function PresentationSchemaPage() {
   }
 
   async function handleNavigateHome() {
-    await deleteTranscriptsForActiveDeck();
     navigate('/');
   }
 
@@ -644,7 +638,7 @@ function PresentationSchemaPage() {
 
   }
 
-  async function deleteTranscriptsForActiveDeck({ keepalive = false, showErrors = true } = {}) {
+  async function handleReviewTranscript() {
     const presentationId = activeDeckIdRef.current;
 
     if (!presentationId) {
@@ -652,23 +646,27 @@ function PresentationSchemaPage() {
     }
 
     try {
-      if (!keepalive) {
-        setIsDeletingTranscripts(true);
-      }
-
-      await TranscriptionService.deletePresentationTranscriptChunks(presentationId, { keepalive });
-    } catch (deleteError) {
-      if (showErrors) {
-        setTranscriptionError(
-          deleteError instanceof Error
-            ? deleteError.message
-            : 'Unable to delete transcript chunks.'
-        );
-      }
+      setTranscriptDialogOpen(true);
+      setFullTranscriptLoading(true);
+      setFullTranscriptError('');
+      const transcript = await TranscriptionService.getPresentationTranscript(presentationId);
+      setFullTranscript(transcript);
+    } catch (transcriptError) {
+      setFullTranscript(null);
+      setFullTranscriptError(
+        transcriptError instanceof Error
+          ? transcriptError.message
+          : 'Unable to load the saved transcript.'
+      );
     } finally {
-      if (!keepalive) {
-        setIsDeletingTranscripts(false);
-      }
+      setFullTranscriptLoading(false);
+    }
+  }
+
+  function handleViewPostFeedback() {
+    const presentationId = activeDeckIdRef.current;
+    if (presentationId) {
+      navigate(`/feedback-page/${presentationId}`);
     }
   }
 
@@ -802,7 +800,6 @@ function PresentationSchemaPage() {
         <PresenterWorkspace
           activeSlide={activeSlide}
           activeSlideTimingSeconds={activeSlideTimingSeconds}
-          isDeletingTranscripts={isDeletingTranscripts}
           isTimerPaused={isTimerPaused}
           isTranscriptionActive={isTranscriptionActive}
           nextSlide={nextSlide}
@@ -817,17 +814,25 @@ function PresentationSchemaPage() {
             isPresenterChromeVisible ? CHROME_WORKSPACE_TOP_OFFSET : FULLSCREEN_WORKSPACE_TOP_OFFSET
           }
           transcriptionError={transcriptionError}
-          onDeleteTranscripts={() => deleteTranscriptsForActiveDeck()}
           onResetTimer={(nextTimerSeconds) => {
             setTimerSeconds(nextTimerSeconds);
             setIsTimerPaused(true);
             stopTranscriptionCapture();
           }}
+          onReviewTranscript={handleReviewTranscript}
           onResizeKeyDown={handleResizeKeyDown}
           onResizePointerDown={handleResizePointerDown}
           onSelectSlide={handleSelectSlide}
           onShowSlidePanel={() => setSlidePanelCollapsed(false)}
           onTogglePresentation={handleTogglePresentation}
+          onViewPostFeedback={handleViewPostFeedback}
+        />
+        <TranscriptReviewDialog
+          open={transcriptDialogOpen}
+          transcript={fullTranscript}
+          isLoading={fullTranscriptLoading}
+          error={fullTranscriptError}
+          onClose={() => setTranscriptDialogOpen(false)}
         />
       </Box>
     </Box>
@@ -839,6 +844,60 @@ async function getFirstPresentationId() {
   const tree = Array.isArray(payload.tree) ? payload.tree : [];
 
   return findFirstPresentationId(tree);
+}
+
+function TranscriptReviewDialog({ error, isLoading, onClose, open, transcript }) {
+  const chunks = transcript?.chunks ?? [];
+  const fullText = transcript?.text?.trim() ?? '';
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+      <DialogTitle>Saved transcript</DialogTitle>
+      <DialogContent dividers>
+        {isLoading ? (
+          <Stack spacing={2} alignItems="center" sx={{ py: 4 }}>
+            <CircularProgress />
+            <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
+              Loading saved transcript...
+            </Typography>
+          </Stack>
+        ) : error ? (
+          <Alert severity="error">{error}</Alert>
+        ) : fullText ? (
+          <Stack spacing={2}>
+            <Typography variant="caption" sx={{ color: 'var(--text-muted)' }}>
+              {chunks.length} saved chunk{chunks.length === 1 ? '' : 's'}
+            </Typography>
+            <Box
+              component="pre"
+              sx={{
+                m: 0,
+                p: 2,
+                maxHeight: '55vh',
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                border: '1px solid var(--border, #e5e4e7)',
+                borderRadius: 1,
+                backgroundColor: 'var(--surface, #f7f4fb)',
+                color: 'var(--text-h)',
+                fontFamily: 'inherit',
+                fontSize: '0.95rem',
+                lineHeight: 1.6,
+              }}
+            >
+              {fullText}
+            </Box>
+          </Stack>
+        ) : (
+          <Alert severity="info">No saved transcript chunks are available yet.</Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
 }
 
 function PresenterChromeToggle({ isVisible, onToggle }) {
