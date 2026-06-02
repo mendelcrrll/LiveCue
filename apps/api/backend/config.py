@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     llm_provider: str = ""
     openai_api_key: str = ""
     stt_provider: str = ""
+    stt_model_name: str = "gpt-4o-mini-transcribe"
     whisper_base_url: str = "http://127.0.0.1:8081"
     qwen_embedding_model_name: str = "Qwen/Qwen3-Embedding-0.6B"
     ollama_base_url: str = "http://localhost:11434"
