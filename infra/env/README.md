@@ -22,6 +22,7 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=http://127.0.0.1:8000/api/auth/google/callback
 FRONTEND_OAUTH_REDIRECT_URL=http://127.0.0.1:5173/
+COOKIE_SAMESITE=auto
 
 OPENAI_API_KEY=
 LLM_PROVIDER=openai
@@ -42,6 +43,7 @@ Google sign-in, import, thumbnail refresh, and notes writeback:
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_REDIRECT_URI`
 - `FRONTEND_OAUTH_REDIRECT_URL`
+- `COOKIE_SAMESITE`
 
 Builder schema generation and live feedback decisions:
 
@@ -67,6 +69,8 @@ http://127.0.0.1:5173/
 
 If you use `localhost` instead of `127.0.0.1`, keep the backend CORS settings, Google redirect URI, and browser URL consistent.
 
+For production with the Vercel frontend calling the Render API, the browser treats API requests as cross-site. Keep `COOKIE_SAMESITE=auto` or set `COOKIE_SAMESITE=none`; the session cookie must be sent as `SameSite=None; Secure` for `/api/auth/session` to stay authenticated after Google redirects back.
+
 ## Frontend Environment
 
 The web app can use `VITE_API_BASE_URL`.
@@ -74,5 +78,5 @@ The web app can use `VITE_API_BASE_URL`.
 If unset, it defaults to:
 
 ```text
-http://127.0.0.1:8000
+https://livecue-e7vl.onrender.com
 ```

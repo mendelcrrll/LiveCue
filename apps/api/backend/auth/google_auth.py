@@ -12,6 +12,10 @@ from backend.config import Settings, get_settings
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+GOOGLE_OPENID_SCOPE = "openid"
+GOOGLE_EMAIL_SCOPE = "email"
+GOOGLE_PROFILE_SCOPE = "profile"
 GOOGLE_SLIDES_READONLY_SCOPE = "https://www.googleapis.com/auth/presentations.readonly"
 GOOGLE_SLIDES_SCOPE = "https://www.googleapis.com/auth/presentations"
 
@@ -146,3 +150,13 @@ class GoogleAuthService:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             resp.raise_for_status()
+
+    async def fetch_userinfo(self, *, access_token: str) -> dict:
+        """Fetch the signed-in Google account profile for stable user identity."""
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(
+                GOOGLE_USERINFO_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            resp.raise_for_status()
+            return resp.json()

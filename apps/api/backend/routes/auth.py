@@ -5,15 +5,25 @@ import json
 import secrets
 import time
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Cookie, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
-from backend.auth.google_auth import GOOGLE_SLIDES_SCOPE, GoogleAuthService, GoogleTokenResponse
+from backend.auth.google_auth import (
+    GOOGLE_EMAIL_SCOPE,
+    GOOGLE_OPENID_SCOPE,
+    GOOGLE_PROFILE_SCOPE,
+    GOOGLE_SLIDES_SCOPE,
+    GoogleAuthService,
+    GoogleTokenResponse,
+)
 from backend.config import get_settings
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
 @router.get("/debug/session")
 def debug_session(
     session_id: str | None = Cookie(default=None, alias="session_id"),
@@ -23,30 +33,6 @@ def debug_session(
         "has_session": session_id in SESSIONS_BY_ID if session_id else False,
         "session_count": len(SESSIONS_BY_ID),
         "credential_count": len(GOOGLE_CREDENTIALS_BY_USER_ID),
-    }
-
-
-@router.get("/session")
-def get_session_status(
-    session_id: str | None = Cookie(default=None, alias="session_id"),
-):
-    credentials = get_google_credentials_for_session(session_id)
-
-    if credentials is None:
-        return {
-            "isAuthenticated": False,
-            "userName": "Guest",
-            "email": None,
-        }
-
-    profile = _decode_google_id_token(credentials.id_token)
-    email = profile.get("email")
-    user_name = profile.get("name") or email or "Google connected"
-
-    return {
-        "isAuthenticated": True,
-        "userName": user_name,
-        "email": email,
     }
 
 
@@ -110,37 +96,6 @@ def _remove_expired_oauth_states() -> None:
         OAUTH_STATES_BY_VALUE.pop(state_value, None)
 
 
-def _decode_google_id_token(id_token: str | None) -> dict[str, str]:
-    if not id_token:
-        return {}
-
-    try:
-        payload_segment = id_token.split(".")[1]
-        padded_payload = payload_segment + "=" * (-len(payload_segment) % 4)
-        payload_bytes = base64.urlsafe_b64decode(padded_payload.encode("utf-8"))
-        payload = json.loads(payload_bytes.decode("utf-8"))
-    except (IndexError, ValueError, json.JSONDecodeError):
-        return {}
-
-    return {
-        "email": str(payload.get("email") or ""),
-        "name": str(payload.get("name") or ""),
-    }
-
-
-def get_google_credentials_for_session(
-    session_id: str | None,
-) -> StoredGoogleCredentials | None:
-    if not session_id:
-        return None
-
-    session = SESSIONS_BY_ID.get(session_id)
-    if session is None:
-        return None
-
-    return GOOGLE_CREDENTIALS_BY_USER_ID.get(session.user_id)
-
-
 @router.get("/session")
 def get_auth_session(
     session_id: str | None = Cookie(default=None, alias="session_id"),
@@ -172,7 +127,11 @@ def get_auth_session(
 def _is_secure_cookie() -> bool:
     settings = get_settings()
     env = str(settings.api_env).lower()
-    return env in {"prod", "production"}
+    return (
+        env in {"prod", "production"}
+        or _cookie_samesite() == "none"
+        or _is_https_url(settings.google_redirect_uri)
+    )
 
 
 def _cookie_samesite() -> str:
@@ -183,7 +142,23 @@ def _cookie_samesite() -> str:
     """
     settings = get_settings()
     configured = getattr(settings, "cookie_samesite", None)
-    return configured or "lax"
+    configured_value = str(configured or "").lower()
+    if configured_value and configured_value != "auto":
+        return configured_value
+    return "none" if _is_cross_site_oauth(settings.frontend_oauth_redirect_url) else "lax"
+
+
+def _is_cross_site_oauth(frontend_url: str) -> bool:
+    settings = get_settings()
+    frontend = urlparse(frontend_url)
+    backend = urlparse(settings.google_redirect_uri)
+    if not frontend.hostname or not backend.hostname:
+        return False
+    return frontend.scheme != backend.scheme or frontend.hostname != backend.hostname
+
+
+def _is_https_url(url: str) -> bool:
+    return urlparse(url).scheme == "https"
 
 
 def _decode_id_token_payload(id_token: str | None) -> dict:
@@ -205,11 +180,23 @@ async def persist_google_credentials(*, tokens: GoogleTokenResponse) -> str:
     Replace with DB storage later.
     """
     id_token_payload = _decode_id_token_payload(tokens.id_token)
+    userinfo_payload = {}
+    if not id_token_payload.get("sub") and not id_token_payload.get("email"):
+        userinfo_payload = await GoogleAuthService().fetch_userinfo(
+            access_token=tokens.access_token,
+        )
+
     user_id = (
         str(id_token_payload.get("sub") or "").strip()
+        or str(userinfo_payload.get("sub") or "").strip()
         or str(id_token_payload.get("email") or "").strip()
-        or secrets.token_urlsafe(16)
+        or str(userinfo_payload.get("email") or "").strip()
     )
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Google did not return a stable account identifier. Try signing in again.",
+        )
 
     GOOGLE_CREDENTIALS_BY_USER_ID[user_id] = StoredGoogleCredentials(
         user_id=user_id,
@@ -245,7 +232,12 @@ def google_login():
     _store_oauth_state(state_value)
     login_url = service.build_login_url(
         state=state_value,
-        scopes=[GOOGLE_SLIDES_SCOPE],
+        scopes=[
+            GOOGLE_OPENID_SCOPE,
+            GOOGLE_EMAIL_SCOPE,
+            GOOGLE_PROFILE_SCOPE,
+            GOOGLE_SLIDES_SCOPE,
+        ],
         access_type="offline",
         prompt="select_account",
         include_granted_scopes=True,
@@ -324,9 +316,12 @@ async def logout(
     resp = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
     if session_id:
-        session = SESSIONS_BY_ID.pop(session_id, None)
-        if session:
-            GOOGLE_CREDENTIALS_BY_USER_ID.pop(session.user_id, None)
+        SESSIONS_BY_ID.pop(session_id, None)
 
-    resp.delete_cookie(key="session_id", path="/")
+    resp.delete_cookie(
+        key="session_id",
+        path="/",
+        samesite=_cookie_samesite(),
+        secure=_is_secure_cookie(),
+    )
     return resp
