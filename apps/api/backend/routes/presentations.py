@@ -618,14 +618,17 @@ async def generate_feedback_decision(
             elapsed_ms=transcript_chunks[-1].chunk_ended_at_ms,
         )
 
-        _apply_feedback_decision_to_slide(
-            session=session,
-            slide=slide,
-            build_data=payload.buildData,
-            decision=normalized,
-        )
-        session.commit()
-        session.refresh(slide)
+        if payload.persistGoalProgress:
+            _apply_feedback_decision_to_slide(
+                session=session,
+                slide=slide,
+                build_data=payload.buildData,
+                decision=normalized,
+            )
+            session.commit()
+            session.refresh(slide)
+        else:
+            session.rollback()
 
         updated_slide = _to_builder_slide(slide)
         return FeedbackDecision(

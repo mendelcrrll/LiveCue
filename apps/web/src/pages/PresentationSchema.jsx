@@ -129,6 +129,8 @@ function PresentationSchemaPage() {
   const activeSlideIdRef = useRef('');
   const presentationDataRef = useRef(null);
   const feedbackDecisionStateRef = useRef({ inFlight: false, pending: null });
+  const isPresentationSessionActiveRef = useRef(false);
+  const presentationSessionEpochRef = useRef(0);
 
   useEffect(() => {
     async function loadWorkflowTree() {
@@ -229,6 +231,10 @@ function PresentationSchemaPage() {
   useEffect(() => {
     activeSlideIdRef.current = activeSlideId ?? '';
   }, [activeSlideId]);
+
+  useEffect(() => {
+    isPresentationSessionActiveRef.current = isPresentationSessionActive;
+  }, [isPresentationSessionActive]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -471,8 +477,9 @@ function PresentationSchemaPage() {
     const started = await startTranscriptionCapture();
 
     if (started) {
-      setIsTimerPaused(false);
+      isPresentationSessionActiveRef.current = true;
       setIsPresentationSessionActive(true);
+      setIsTimerPaused(false);
     }
 
     return started;
@@ -625,7 +632,7 @@ function PresentationSchemaPage() {
         chunkEndedAtMs,
       });
 
-      if (transcriptChunk.saved) {
+      if (transcriptChunk.saved && isPresentationSessionActiveRef.current) {
         await requestFeedbackDecision({ presentationId, slideId });
       }
     } catch (chunkError) {
@@ -638,6 +645,10 @@ function PresentationSchemaPage() {
   }
 
   async function requestFeedbackDecision({ presentationId, slideId }) {
+    if (!isPresentationSessionActiveRef.current) {
+      return;
+    }
+
     const decisionState = feedbackDecisionStateRef.current;
 
     if (decisionState.inFlight) {
@@ -663,6 +674,11 @@ function PresentationSchemaPage() {
   }
 
   async function runFeedbackDecision({ presentationId, slideId }) {
+    if (!isPresentationSessionActiveRef.current) {
+      return;
+    }
+
+    const sessionEpoch = presentationSessionEpochRef.current;
     const currentPresentationData = presentationDataRef.current;
     const slide = currentPresentationData?.slides.find((candidate) => candidate.slideId === slideId);
 
@@ -676,8 +692,16 @@ function PresentationSchemaPage() {
       {
         buildData: slide.buildData,
         windowSize: 12,
+        persistGoalProgress: true,
       }
     );
+
+    if (
+      !isPresentationSessionActiveRef.current ||
+      sessionEpoch !== presentationSessionEpochRef.current
+    ) {
+      return;
+    }
 
     if (decision.updatedSlide) {
       setPresentationData((currentData) => {
@@ -732,11 +756,22 @@ function PresentationSchemaPage() {
     }
   }
 
+  async function waitForFeedbackDecisionsToFinish() {
+    while (feedbackDecisionStateRef.current.inFlight) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+  }
+
   async function handleEndSession() {
+    isPresentationSessionActiveRef.current = false;
+    setIsPresentationSessionActive(false);
+    presentationSessionEpochRef.current += 1;
+    feedbackDecisionStateRef.current.pending = null;
     setIsTimerPaused(true);
     stopTranscriptionCapture();
-    setIsPresentationSessionActive(false);
     setSessionEndResetError('');
+
+    await waitForFeedbackDecisionsToFinish();
 
     const presentationId = activeDeckIdRef.current;
 

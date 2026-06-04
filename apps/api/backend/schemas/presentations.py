@@ -88,6 +88,7 @@ class FeedbackDecisionRequest(BaseModel):
         description="Maximum number of transcript chunks to include for this slide.",
     )
     model: str | None = Field(default=None, min_length=1)
+    persistGoalProgress: bool = True
 
 
 class FeedbackGoalDecision(BaseModel):

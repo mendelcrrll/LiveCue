@@ -25,10 +25,14 @@ async function updateSlideDemoTranscript(deckId, slideId, demoTranscript, { sour
   );
 }
 
-async function generateFeedbackDecision(deckId, slideId, { buildData, windowSize = 12, model } = {}) {
+async function generateFeedbackDecision(
+  deckId,
+  slideId,
+  { buildData, windowSize = 12, model, persistGoalProgress = true } = {}
+) {
   return requestJson(
     `/api/presentations/${deckId}/slides/${slideId}/feedback-decision`,
-    jsonRequestOptions('POST', { buildData, windowSize, model })
+    jsonRequestOptions('POST', { buildData, windowSize, model, persistGoalProgress })
   );
 }
 
