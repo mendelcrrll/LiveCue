@@ -32,6 +32,13 @@ async function generateFeedbackDecision(deckId, slideId, { buildData, windowSize
   );
 }
 
+async function resetGoalProgress(deckId) {
+  return requestJson(
+    `/api/presentations/${deckId}/reset-goal-progress`,
+    jsonRequestOptions('POST', {})
+  );
+}
+
 async function generateSlideBuildData(deckId, slideId, { speakerNotes, demoTranscript, model } = {}) {
   return requestJson(
     `/api/presentations/${deckId}/builder-schema/slides/${slideId}/generate`,
@@ -51,6 +58,7 @@ export default {
   generateSlideBuildData,
   getSlideDeckBuild,
   refreshGoogleContext,
+  resetGoalProgress,
   updateSlideBuildData,
   updateSlideDemoTranscript,
   updateSlideNotes,

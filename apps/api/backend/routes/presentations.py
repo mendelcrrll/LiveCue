@@ -535,6 +535,30 @@ async def generate_builder_slide_schema(
 
 
 @router.post(
+    "/{presentation_id}/reset-goal-progress",
+    response_model=PresentationBuilderData,
+)
+def reset_presentation_goal_progress(presentation_id: UUID):
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        _reset_presentation_goal_progress(presentation)
+        session.commit()
+        session.refresh(presentation)
+
+        return _to_builder_response(presentation)
+    except HTTPException:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+@router.post(
     "/{presentation_id}/slides/{slide_id}/feedback-decision",
     response_model=FeedbackDecision,
 )
@@ -1025,6 +1049,20 @@ def _to_builder_response(presentation: Presentation) -> PresentationBuilderData:
         deckTitle=presentation.title,
         slides=[_to_builder_slide(slide) for slide in presentation.slides],
     )
+
+
+def _reset_presentation_goal_progress(presentation: Presentation) -> None:
+    for slide in presentation.slides:
+        for priority_item in slide.priority_items:
+            extra_data = dict(priority_item.extra_data or {})
+            extra_data["completed"] = False
+            extra_data.pop("completedAtMs", None)
+            extra_data.pop("evidence", None)
+            priority_item.extra_data = extra_data
+
+        raw_page = dict(slide.raw_page or {})
+        raw_page.pop("lastFeedbackDecision", None)
+        slide.raw_page = raw_page
 
 
 def _to_builder_slide(slide) -> BuilderSlide:

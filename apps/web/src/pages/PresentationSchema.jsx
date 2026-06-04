@@ -109,6 +109,7 @@ function PresentationSchemaPage() {
   const [fullTranscriptLoading, setFullTranscriptLoading] = useState(false);
   const [fullTranscriptError, setFullTranscriptError] = useState('');
   const [sessionEndDialogOpen, setSessionEndDialogOpen] = useState(false);
+  const [sessionEndResetError, setSessionEndResetError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isPresenterChromeVisible, setIsPresenterChromeVisible] = useState(() =>
@@ -714,9 +715,33 @@ function PresentationSchemaPage() {
     }
   }
 
-  function handleEndSession() {
+  async function handleEndSession() {
     setIsTimerPaused(true);
     stopTranscriptionCapture();
+    setSessionEndResetError('');
+
+    const presentationId = activeDeckIdRef.current;
+
+    if (presentationId) {
+      try {
+        const data = await PresentationBuilderService.resetGoalProgress(presentationId);
+        const slides = sortSlidesByNumber(data.slides ?? []);
+        const nextData = {
+          ...data,
+          slides,
+        };
+
+        setPresentationData(nextData);
+        presentationDataRef.current = nextData;
+      } catch (resetError) {
+        setSessionEndResetError(
+          resetError instanceof Error
+            ? resetError.message
+            : 'Unable to reset goal progress for the next session.'
+        );
+      }
+    }
+
     setSessionEndDialogOpen(true);
   }
 
@@ -886,7 +911,11 @@ function PresentationSchemaPage() {
         />
         <EndSessionDialog
           open={sessionEndDialogOpen}
-          onClose={() => setSessionEndDialogOpen(false)}
+          resetError={sessionEndResetError}
+          onClose={() => {
+            setSessionEndDialogOpen(false);
+            setSessionEndResetError('');
+          }}
           onGoHome={() => {
             setSessionEndDialogOpen(false);
             navigate('/');
@@ -908,15 +937,18 @@ async function getFirstPresentationId() {
   return findFirstPresentationId(tree);
 }
 
-function EndSessionDialog({ onClose, onGoHome, onReviewFeedback, open }) {
+function EndSessionDialog({ onClose, onGoHome, onReviewFeedback, open, resetError }) {
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" sx={themedDialogSx}>
       <DialogTitle>Presentation session ended</DialogTitle>
       <DialogContent dividers>
-        <Typography variant="body1" sx={{ color: 'var(--text)', py: 1 }}>
-          Your transcript chunks have been saved for this deck. You can review audience feedback now
-          or return to the file explorer.
-        </Typography>
+        <Stack spacing={2} sx={{ py: 1 }}>
+          <Typography variant="body1" sx={{ color: 'var(--text)' }}>
+            Your transcript has been saved for this deck. Goal progress has been reset so you can
+            start fresh next time. Post-presentation feedback is unchanged.
+          </Typography>
+          {resetError ? <Alert severity="warning">{resetError}</Alert> : null}
+        </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onGoHome} sx={themedTextButtonSx}>
