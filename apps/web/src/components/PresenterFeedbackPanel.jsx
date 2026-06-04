@@ -3,6 +3,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { isPriorityItemComplete } from '../utils/slideUtils';
 
 function PresenterFeedbackPanel({ slide }) {
   const priorityItems = [...(slide.buildData?.priorityItems ?? [])].sort(
@@ -49,7 +50,6 @@ function PresenterFeedbackPanel({ slide }) {
           {priorityItems.length > 0 ? (
             priorityItems.map((item, index) => {
               const isComplete = isPriorityItemComplete(item);
-              const itemProgress = isComplete ? 100 : 0;
 
               return (
                 <Box
@@ -57,7 +57,7 @@ function PresenterFeedbackPanel({ slide }) {
                   data-priority-item-id={item.id}
                   data-priority-complete={isComplete ? 'true' : 'false'}
                   sx={{
-                    minHeight: 76,
+                    minHeight: 52,
                     display: 'grid',
                     gridTemplateColumns: '32px minmax(0, 1fr)',
                     gap: 1.5,
@@ -106,21 +106,6 @@ function PresenterFeedbackPanel({ slide }) {
                         {isComplete ? 'Done' : 'Pending'}
                       </Typography>
                     </Stack>
-                    <LinearProgress
-                      variant="determinate"
-                      value={itemProgress}
-                      aria-label={`Goal ${index + 1} progress`}
-                      sx={{
-                        mt: 0.9,
-                        height: 6,
-                        borderRadius: 999,
-                        backgroundColor: 'var(--surface-raised, #ffffff)',
-                        '& .MuiLinearProgress-bar': {
-                          borderRadius: 999,
-                          backgroundColor: 'var(--interactive-border, #8e72bf)',
-                        },
-                      }}
-                    />
                   </Box>
                 </Box>
               );
@@ -166,10 +151,6 @@ function PresenterWindow({ title, children }) {
       </Stack>
     </Paper>
   );
-}
-
-function isPriorityItemComplete(item) {
-  return Boolean(item.completed || item.complete || item.isComplete || item.finished);
 }
 
 export default PresenterFeedbackPanel;

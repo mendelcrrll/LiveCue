@@ -23,7 +23,10 @@ import { findNodeById } from '../data/presentationTree';
 import PresentationBuilderService from '../services/PresentationBuilderService';
 import TranscriptionService from '../services/TranscriptionService';
 import PresentationWorkflowService from '../services/PresentationWorkflowService';
-import { sortSlidesByNumber } from '../utils/slideUtils';
+import {
+  mergeSlidePreservingGoalCompletion,
+  sortSlidesByNumber,
+} from '../utils/slideUtils';
 
 const DRAWER_WIDTH = 320;
 const SLIDE_PANEL_MIN_WIDTH = 320;
@@ -664,14 +667,16 @@ function PresentationSchemaPage() {
           return currentData;
         }
 
-        return {
+        const nextData = {
           ...currentData,
           slides: currentData.slides.map((currentSlide) =>
             currentSlide.slideId === decision.updatedSlide.slideId
-              ? decision.updatedSlide
+              ? mergeSlidePreservingGoalCompletion(currentSlide, decision.updatedSlide)
               : currentSlide
           ),
         };
+        presentationDataRef.current = nextData;
+        return nextData;
       });
     }
 

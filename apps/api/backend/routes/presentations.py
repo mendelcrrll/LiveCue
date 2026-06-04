@@ -590,6 +590,7 @@ async def generate_feedback_decision(
         normalized = _normalize_feedback_decision(
             raw_decision=raw_decision,
             build_data=payload.buildData,
+            slide=slide,
             elapsed_ms=transcript_chunks[-1].chunk_ended_at_ms,
         )
 
@@ -1414,11 +1415,15 @@ def _normalize_feedback_decision(
     *,
     raw_decision: dict,
     build_data: BuilderSlideData,
+    slide: PresentationSlide,
     elapsed_ms: int,
 ) -> dict:
     priority_ids = {item.id for item in build_data.priorityItems}
     accessibility_ids = {check.id for check in build_data.accessibilityChecks}
     already_completed = {item.id for item in build_data.priorityItems if item.completed}
+    for db_item in slide.priority_items:
+        if db_item.extra_data.get("completed"):
+            already_completed.add(str(db_item.id))
 
     goal_updates = []
     for item in raw_decision.get("goalUpdates", []):
