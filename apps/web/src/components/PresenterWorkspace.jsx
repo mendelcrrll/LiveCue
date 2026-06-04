@@ -3,6 +3,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
+import PlayCircleOutlineOutlinedIcon from '@mui/icons-material/PlayCircleOutlineOutlined';
 import StopCircleOutlinedIcon from '@mui/icons-material/StopCircleOutlined';
 import CollapsiblePanelRail from './CollapsiblePanelRail';
 import PresenterFeedbackPanel from './PresenterFeedbackPanel';
@@ -31,6 +32,7 @@ const presenterPrimaryButtonSx = {
 function PresenterWorkspace({
   activeSlide,
   activeSlideTimingSeconds,
+  isPresentationSessionActive,
   isTimerPaused,
   isTranscriptionActive,
   nextSlide,
@@ -38,6 +40,7 @@ function PresenterWorkspace({
   onResizeKeyDown,
   onResizePointerDown,
   onEndSession,
+  onStartSession,
   onSelectSlide,
   onShowSlidePanel,
   onTogglePresentation,
@@ -133,11 +136,17 @@ function PresenterWorkspace({
             <Button
               variant="contained"
               size="small"
-              startIcon={<StopCircleOutlinedIcon />}
-              onClick={onEndSession}
+              startIcon={
+                isPresentationSessionActive ? (
+                  <StopCircleOutlinedIcon />
+                ) : (
+                  <PlayCircleOutlineOutlinedIcon />
+                )
+              }
+              onClick={isPresentationSessionActive ? onEndSession : onStartSession}
               sx={presenterPrimaryButtonSx}
             >
-              End session
+              {isPresentationSessionActive ? 'End session' : 'Start session'}
             </Button>
           </Stack>
         </Stack>
@@ -158,7 +167,9 @@ function PresenterWorkspace({
                   transcriptionStatus={
                     isTranscriptionActive
                       ? 'Recording and saving 10-second transcript chunks'
-                      : 'Press play to start timer and transcription'
+                      : isPresentationSessionActive
+                        ? 'Session paused. Resume the timer or end the session.'
+                        : 'Press Start session to begin timer and transcription'
                   }
                   onToggleTimer={onTogglePresentation}
                   onResetTimer={() => {

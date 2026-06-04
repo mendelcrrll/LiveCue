@@ -110,6 +110,7 @@ function PresentationSchemaPage() {
   const [fullTranscriptError, setFullTranscriptError] = useState('');
   const [sessionEndDialogOpen, setSessionEndDialogOpen] = useState(false);
   const [sessionEndResetError, setSessionEndResetError] = useState('');
+  const [isPresentationSessionActive, setIsPresentationSessionActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isPresenterChromeVisible, setIsPresenterChromeVisible] = useState(() =>
@@ -208,8 +209,14 @@ function PresentationSchemaPage() {
 
   useEffect(() => {
     setTimerSeconds(activeSlideTimingSeconds);
-    setIsTimerPaused(true);
-  }, [activeSlideId, activeSlideTimingSeconds]);
+
+    if (isPresentationSessionActive) {
+      setIsTimerPaused(false);
+      void startTranscriptionCapture();
+    } else {
+      setIsTimerPaused(true);
+    }
+  }, [activeSlideId, activeSlideTimingSeconds, isPresentationSessionActive]);
 
   useEffect(() => {
     activeDeckIdRef.current = activeDeckId ?? '';
@@ -460,19 +467,29 @@ function PresentationSchemaPage() {
     navigate('/');
   }
 
+  async function startPresentationSession() {
+    const started = await startTranscriptionCapture();
+
+    if (started) {
+      setIsTimerPaused(false);
+      setIsPresentationSessionActive(true);
+    }
+
+    return started;
+  }
+
   async function handleTogglePresentation() {
     if (isTimerPaused) {
-      const started = await startTranscriptionCapture();
-
-      if (started) {
-        setIsTimerPaused(false);
-      }
-
+      await startPresentationSession();
       return;
     }
 
     setIsTimerPaused(true);
     stopTranscriptionCapture();
+  }
+
+  async function handleStartSession() {
+    await startPresentationSession();
   }
 
   async function startTranscriptionCapture() {
@@ -718,6 +735,7 @@ function PresentationSchemaPage() {
   async function handleEndSession() {
     setIsTimerPaused(true);
     stopTranscriptionCapture();
+    setIsPresentationSessionActive(false);
     setSessionEndResetError('');
 
     const presentationId = activeDeckIdRef.current;
@@ -875,6 +893,7 @@ function PresentationSchemaPage() {
         <PresenterWorkspace
           activeSlide={activeSlide}
           activeSlideTimingSeconds={activeSlideTimingSeconds}
+          isPresentationSessionActive={isPresentationSessionActive}
           isTimerPaused={isTimerPaused}
           isTranscriptionActive={isTranscriptionActive}
           nextSlide={nextSlide}
@@ -895,6 +914,7 @@ function PresentationSchemaPage() {
             stopTranscriptionCapture();
           }}
           onEndSession={handleEndSession}
+          onStartSession={handleStartSession}
           onReviewTranscript={handleReviewTranscript}
           onResizeKeyDown={handleResizeKeyDown}
           onResizePointerDown={handleResizePointerDown}
