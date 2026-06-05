@@ -29,6 +29,39 @@ const DIALOG_COPY = {
   },
 };
 
+function extractGooglePresentationId(value) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return '';
+  }
+
+  const pathMatch = trimmedValue.match(/\/d\/([A-Za-z0-9_-]+)/);
+  if (pathMatch) {
+    return pathMatch[1];
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+    const searchParamId =
+      url.searchParams.get('id') ??
+      url.searchParams.get('presentationId') ??
+      url.searchParams.get('deckId');
+
+    if (searchParamId) {
+      return searchParamId;
+    }
+  } catch {
+    // Bare Google presentation IDs are handled below.
+  }
+
+  if (/^[A-Za-z0-9_-]+$/.test(trimmedValue)) {
+    return trimmedValue;
+  }
+
+  return '';
+}
+
 export default function WorkflowRequestDialog({
   mode,
   open,
@@ -46,7 +79,7 @@ export default function WorkflowRequestDialog({
     }
     return 'new-file.pptx';
   });
-  const [googlePresentationId, setGooglePresentationId] = useState('');
+  const [slideDeckUrl, setSlideDeckUrl] = useState('');
 
   if (!mode) {
     return null;
@@ -54,9 +87,16 @@ export default function WorkflowRequestDialog({
 
   const copy = DIALOG_COPY[mode];
   const isSlides = mode === 'slides';
+  const googlePresentationId = isSlides ? extractGooglePresentationId(slideDeckUrl) : '';
+  const hasInvalidSlideDeckUrl = isSlides && slideDeckUrl.trim() !== '' && !googlePresentationId;
 
   const handleSubmit = (event) => {
     event.preventDefault();
+
+    if (isSlides && !googlePresentationId) {
+      return;
+    }
+
     onSubmit({
       name,
       googlePresentationId,
@@ -108,11 +148,19 @@ export default function WorkflowRequestDialog({
           />
           {isSlides && (
             <TextField
-              label="Google presentation ID"
-              value={googlePresentationId}
-              onChange={(event) => setGooglePresentationId(event.target.value)}
+              label="Google Slides URL or deck ID"
+              value={slideDeckUrl}
+              onChange={(event) => setSlideDeckUrl(event.target.value)}
               required
               fullWidth
+              error={hasInvalidSlideDeckUrl}
+              helperText={
+                hasInvalidSlideDeckUrl
+                  ? 'Paste a Google Slides link or a valid presentation ID.'
+                  : googlePresentationId
+                    ? `Deck ID: ${googlePresentationId}`
+                    : 'Paste the share URL from Google Slides, or enter the deck ID directly.'
+              }
               sx={{
                 '& .MuiInputBase-root': {
                   backgroundColor: 'var(--surface, #201c28)',

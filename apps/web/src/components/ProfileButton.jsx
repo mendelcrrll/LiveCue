@@ -13,6 +13,7 @@ export default function ProfileButton({
   onProfileClick,
   onAccountClick,
   onGoogleConnect,
+  onLogout,
 }) {
   const [anchorEl, setAnchorEl] = React.useState(null);
   const [mobileMoreAnchorEl, setMobileMoreAnchorEl] = React.useState(null);
@@ -162,6 +163,7 @@ export default function ProfileButton({
         <MenuItem onClick={handleMenuAction(onGoogleConnect)}>
           {isAuthenticated ? 'Manage Google connection' : 'Connect Google account'}
         </MenuItem>
+        {isAuthenticated && <MenuItem onClick={handleMenuAction(onLogout)}>Sign out</MenuItem>}
       </Menu>
     </>
   );

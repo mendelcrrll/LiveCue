@@ -32,6 +32,20 @@ export default function PrimarySearchAppBar({
   const handleGoogleConnect = () => {
     window.location.assign(`${API_BASE_URL}/api/auth/google/login`);
   };
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } finally {
+      setAuthState({
+        isAuthenticated: false,
+        userName: 'Guest',
+      });
+      navigate('/');
+    }
+  };
 
   useEffect(() => {
     let isActive = true;
@@ -130,6 +144,7 @@ export default function PrimarySearchAppBar({
             isAuthenticated={authState.isAuthenticated}
             userName={authState.userName}
             onGoogleConnect={handleGoogleConnect}
+            onLogout={handleLogout}
           />
         </Toolbar>
       </MuiAppBar>
