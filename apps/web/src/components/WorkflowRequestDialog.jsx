@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -7,6 +7,9 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import PresentationWorkflowService from '../services/PresentationWorkflowService';
+
+const DEFAULT_SLIDES_NAME = 'new-google-slides-request.pptx';
 
 const DIALOG_COPY = {
   folder: {
@@ -72,7 +75,7 @@ export default function WorkflowRequestDialog({
 }) {
   const [name, setName] = useState(() => {
     if (mode === 'slides') {
-      return 'new-google-slides-request.pptx';
+      return DEFAULT_SLIDES_NAME;
     }
     if (mode === 'folder') {
       return 'New Folder';
@@ -80,15 +83,63 @@ export default function WorkflowRequestDialog({
     return 'new-file.pptx';
   });
   const [slideDeckUrl, setSlideDeckUrl] = useState('');
+  const [deckLookupStatus, setDeckLookupStatus] = useState('idle');
+  const nameEditedRef = useRef(false);
+
+  const copy = mode ? DIALOG_COPY[mode] : null;
+  const isSlides = mode === 'slides';
+  const googlePresentationId = isSlides ? extractGooglePresentationId(slideDeckUrl) : '';
+  const hasInvalidSlideDeckUrl = isSlides && slideDeckUrl.trim() !== '' && !googlePresentationId;
+
+  useEffect(() => {
+    if (!isSlides || !googlePresentationId) {
+      return undefined;
+    }
+
+    let isActive = true;
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const preview = await PresentationWorkflowService.previewGoogleSlidesDeck(
+          googlePresentationId
+        );
+
+        if (!isActive) {
+          return;
+        }
+
+        if (preview.title && !nameEditedRef.current) {
+          setName(preview.title);
+        }
+        setDeckLookupStatus('loaded');
+      } catch {
+        if (isActive) {
+          setDeckLookupStatus('error');
+        }
+      }
+    }, 350);
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [googlePresentationId, isSlides]);
 
   if (!mode) {
     return null;
   }
 
-  const copy = DIALOG_COPY[mode];
-  const isSlides = mode === 'slides';
-  const googlePresentationId = isSlides ? extractGooglePresentationId(slideDeckUrl) : '';
-  const hasInvalidSlideDeckUrl = isSlides && slideDeckUrl.trim() !== '' && !googlePresentationId;
+  const slideDeckHelperText = hasInvalidSlideDeckUrl
+    ? 'Paste a Google Slides link or a valid presentation ID.'
+    : deckLookupStatus === 'loading'
+      ? 'Looking up deck info...'
+      : deckLookupStatus === 'loaded'
+        ? 'Deck info loaded.'
+        : deckLookupStatus === 'error'
+          ? 'Could not look up deck info yet; the ID can still be used.'
+          : googlePresentationId
+            ? `Deck ID: ${googlePresentationId}`
+            : 'Paste the share URL from Google Slides, or enter the deck ID directly.';
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -101,6 +152,14 @@ export default function WorkflowRequestDialog({
       name,
       googlePresentationId,
     });
+  };
+
+  const handleSlideDeckUrlChange = (event) => {
+    const nextValue = event.target.value;
+    const nextGooglePresentationId = extractGooglePresentationId(nextValue);
+
+    setSlideDeckUrl(nextValue);
+    setDeckLookupStatus(nextGooglePresentationId ? 'loading' : 'idle');
   };
 
   return (
@@ -129,7 +188,10 @@ export default function WorkflowRequestDialog({
           <TextField
             label={copy.nameLabel}
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              nameEditedRef.current = true;
+              setName(event.target.value);
+            }}
             required
             fullWidth
             autoFocus
@@ -150,17 +212,11 @@ export default function WorkflowRequestDialog({
             <TextField
               label="Google Slides URL or deck ID"
               value={slideDeckUrl}
-              onChange={(event) => setSlideDeckUrl(event.target.value)}
+              onChange={handleSlideDeckUrlChange}
               required
               fullWidth
               error={hasInvalidSlideDeckUrl}
-              helperText={
-                hasInvalidSlideDeckUrl
-                  ? 'Paste a Google Slides link or a valid presentation ID.'
-                  : googlePresentationId
-                    ? `Deck ID: ${googlePresentationId}`
-                    : 'Paste the share URL from Google Slides, or enter the deck ID directly.'
-              }
+              helperText={slideDeckHelperText}
               sx={{
                 '& .MuiInputBase-root': {
                   backgroundColor: 'var(--surface, #201c28)',
@@ -171,6 +227,9 @@ export default function WorkflowRequestDialog({
                 },
                 '& .MuiOutlinedInput-notchedOutline': {
                   borderColor: 'var(--border, #4a4358)',
+                },
+                '& .MuiFormHelperText-root': {
+                  color: 'var(--text-h, #f5f1ff)',
                 },
               }}
             />

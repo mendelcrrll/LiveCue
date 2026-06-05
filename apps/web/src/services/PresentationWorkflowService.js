@@ -26,6 +26,15 @@ async function createFile({ parentId, name, sourceKind = 'manual', googlePresent
   );
 }
 
+async function previewGoogleSlidesDeck(googlePresentationId) {
+  return requestJson(
+    '/api/presentations/google-slides-preview',
+    jsonRequestOptions('POST', {
+      presentation_id: googlePresentationId,
+    })
+  );
+}
+
 async function deleteNode(nodeId) {
   return requestJson(`/api/presentations/nodes/${nodeId}`, {
     method: 'DELETE',
@@ -41,5 +50,6 @@ export default {
   createFolder,
   deleteNode,
   getPresentationTree,
+  previewGoogleSlidesDeck,
   refreshSlideThumbnail,
 };

@@ -32,6 +32,10 @@ function getFileExtension(name) {
 }
 
 function getItemLabel(node) {
+  if (node.isPendingImport) {
+    return 'Importing';
+  }
+
   if (node.type === 'folder') {
     return `${node.children.length} item${node.children.length === 1 ? '' : 's'}`;
   }
@@ -50,6 +54,7 @@ function Home() {
   const [submittingAction, setSubmittingAction] = useState(false);
   const [actionFeedback, setActionFeedback] = useState('');
   const [actionError, setActionError] = useState('');
+  const [pendingImports, setPendingImports] = useState([]);
   const [authState, setAuthState] = useState({
     isAuthenticated: false,
   });
@@ -139,11 +144,64 @@ function Home() {
       return;
     }
 
+    const pendingImportId =
+      mode === 'slides' ? `pending-import-${window.crypto?.randomUUID?.() ?? Date.now()}` : null;
+
     setSubmittingAction(true);
     setActionError('');
     setActionFeedback('');
 
     try {
+      if (mode === 'slides') {
+        setActionMode(null);
+        setPendingImports((currentImports) => [
+          ...currentImports,
+          {
+            id: pendingImportId,
+            parentId: targetFolder.id,
+            type: 'file',
+            name: values.name,
+            sourceKind: 'google_slides_request',
+            googlePresentationId: values.googlePresentationId,
+            isPendingImport: true,
+            isThumbnailLoading: true,
+            thumbnailUrl: '',
+          },
+        ]);
+
+        PresentationWorkflowService.previewGoogleSlidesDeck(values.googlePresentationId)
+          .then((preview) => {
+            setPendingImports((currentImports) =>
+              currentImports.map((pendingImport) =>
+                pendingImport.id === pendingImportId
+                  ? {
+                      ...pendingImport,
+                      name:
+                        pendingImport.name === 'new-google-slides-request.pptx' &&
+                        preview.title
+                          ? preview.title
+                          : pendingImport.name,
+                      thumbnailUrl: preview.thumbnail_url ?? '',
+                      isThumbnailLoading: false,
+                    }
+                  : pendingImport
+              )
+            );
+          })
+          .catch(() => {
+            setPendingImports((currentImports) =>
+              currentImports.map((pendingImport) =>
+                pendingImport.id === pendingImportId
+                  ? {
+                      ...pendingImport,
+                      isThumbnailLoading: false,
+                    }
+                  : pendingImport
+              )
+            );
+          });
+      }
+
       const payload =
         mode === 'folder'
           ? await PresentationWorkflowService.createFolder({
@@ -157,7 +215,9 @@ function Home() {
               googlePresentationId: mode === 'slides' ? values.googlePresentationId : undefined,
             });
 
-      setActionMode(null);
+      if (mode !== 'slides') {
+        setActionMode(null);
+      }
       setActionFeedback(
         mode === 'folder'
           ? 'Folder created successfully.'
@@ -171,6 +231,11 @@ function Home() {
         error instanceof Error ? error.message : 'Unable to complete the workflow action.'
       );
     } finally {
+      if (pendingImportId) {
+        setPendingImports((currentImports) =>
+          currentImports.filter((pendingImport) => pendingImport.id !== pendingImportId)
+        );
+      }
       setSubmittingAction(false);
     }
   }
@@ -377,7 +442,10 @@ function Home() {
 
   const breadcrumb = selectedContext.path.map((node) => node.name).join(' / ');
   const activeFolder = selectedNode.type === 'folder' ? selectedNode : selectedParent;
-  const visibleItems = activeFolder?.children ?? [];
+  const visibleItems = [
+    ...(activeFolder?.children ?? []),
+    ...pendingImports.filter((pendingImport) => pendingImport.parentId === activeFolder?.id),
+  ];
   const hasVisibleItems = visibleItems.length > 0;
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
@@ -502,17 +570,22 @@ function Home() {
               {visibleItems.map((item) => {
               const isSelected = item.id === selectedNode.id;
               const isFolder = item.type === 'folder';
-              const isLocked = isLockedPresentation(item);
+              const isPendingImport = Boolean(item.isPendingImport);
+              const isLocked = !isPendingImport && isLockedPresentation(item);
 
               return (
                 <Paper
                   key={item.id}
                   elevation={0}
-                  onClick={() => openWorkflowItem(item)}
+                  onClick={() => {
+                    if (!isPendingImport) {
+                      openWorkflowItem(item);
+                    }
+                  }}
                   sx={{
                     overflow: 'hidden',
                     borderRadius: 2,
-                    cursor: isLocked ? 'not-allowed' : 'pointer',
+                    cursor: isPendingImport ? 'progress' : isLocked ? 'not-allowed' : 'pointer',
                     opacity: isLocked ? 0.68 : 1,
                     border: isSelected
                       ? '2px solid var(--primary, #492e7d)'
@@ -522,7 +595,7 @@ function Home() {
                       : 'var(--surface-raised, #ffffff)',
                     transition: 'transform 180ms ease, border-color 180ms ease',
                     '&:hover': {
-                      transform: isLocked ? 'none' : 'translateY(-2px)',
+                      transform: isLocked || isPendingImport ? 'none' : 'translateY(-2px)',
                       borderColor: 'var(--primary, #492e7d)',
                     },
                   }}
@@ -541,21 +614,32 @@ function Home() {
                     }}
                   >
                     {!isFolder && item.thumbnailUrl && !isLocked ? (
-                      <SlidePreview
-                        slide={{
-                          slideNumber: 1,
-                          thumbnailUrl: item.thumbnailUrl,
-                        }}
-                        onImageError={(event) => refreshCardThumbnail(event, item)}
-                        borderRadius={0}
-                        sx={{
-                          border: 0,
-                          borderRadius: 0,
-                        }}
-                      />
+                      <>
+                        <SlidePreview
+                          slide={{
+                            slideNumber: 1,
+                            thumbnailUrl: item.thumbnailUrl,
+                          }}
+                          onImageError={
+                            isPendingImport
+                              ? undefined
+                              : (event) => refreshCardThumbnail(event, item)
+                          }
+                          borderRadius={0}
+                          sx={{
+                            border: 0,
+                            borderRadius: 0,
+                          }}
+                        />
+                        {isPendingImport && (
+                          <ImportingOverlay thumbnailLoaded={!item.isThumbnailLoading} />
+                        )}
+                      </>
                     ) : (
                     <Stack spacing={1} alignItems="center">
-                      {isLocked ? (
+                      {isPendingImport ? (
+                        <CircularProgress size={42} />
+                      ) : isLocked ? (
                         <LockOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
                       ) : isFolder ? (
                         <FolderOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
@@ -563,7 +647,11 @@ function Home() {
                         <SlideshowOutlinedIcon sx={{ fontSize: 52, color: 'var(--primary)' }} />
                       )}
                       <Typography variant="body2" sx={{ color: 'var(--text-muted)' }}>
-                        {isLocked ? 'Sign in required' : isFolder ? `${item.children.length} items` : 'Preview'}
+                        {isPendingImport
+                          ? item.isThumbnailLoading
+                            ? 'Loading preview'
+                            : 'Importing deck'
+                          : isLocked ? 'Sign in required' : isFolder ? `${item.children.length} items` : 'Preview'}
                       </Typography>
                     </Stack>
                     )}
@@ -573,7 +661,13 @@ function Home() {
                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
                       <Chip
                         size="small"
-                        label={isFolder ? 'Folder' : getFileExtension(item.name)}
+                        label={
+                          isPendingImport
+                            ? 'Importing'
+                            : isFolder
+                              ? 'Folder'
+                              : getFileExtension(item.name)
+                        }
                         icon={isFolder ? <FolderOutlinedIcon /> : <SlideshowOutlinedIcon />}
                         sx={{
                           backgroundColor: 'var(--interactive-bg, #e8def8)',
@@ -682,6 +776,48 @@ function Home() {
 }
 
 export default Home;
+
+function ImportingOverlay({ thumbnailLoaded }) {
+  return (
+    <Box
+      sx={{
+        position: 'absolute',
+        inset: 0,
+        display: 'grid',
+        placeItems: 'center',
+        backgroundColor: thumbnailLoaded
+          ? 'rgba(15, 12, 22, 0.34)'
+          : 'rgba(247, 244, 251, 0.62)',
+        backdropFilter: thumbnailLoaded ? 'blur(1.5px)' : 'none',
+      }}
+    >
+      <Stack
+        spacing={1}
+        alignItems="center"
+        sx={{
+          px: 1.5,
+          py: 1.25,
+          borderRadius: 2,
+          backgroundColor: thumbnailLoaded ? 'rgba(22, 19, 29, 0.76)' : 'transparent',
+        }}
+      >
+        <CircularProgress
+          size={32}
+          sx={{ color: thumbnailLoaded ? '#ffffff' : 'var(--primary, #492e7d)' }}
+        />
+        <Typography
+          variant="caption"
+          sx={{
+            color: thumbnailLoaded ? '#ffffff' : 'var(--text-h, #08060d)',
+            fontWeight: 700,
+          }}
+        >
+          Importing
+        </Typography>
+      </Stack>
+    </Box>
+  );
+}
 
 function EmptyWorkflowState({ isAuthenticated, onGoogleConnect, onRequestSlides }) {
   return (

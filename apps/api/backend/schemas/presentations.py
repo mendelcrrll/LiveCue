@@ -12,6 +12,17 @@ class PresentationImportResponse(BaseModel):
     slide_count: int
 
 
+class GoogleSlidesPreviewRequest(BaseModel):
+    presentation_id: str = Field(min_length=1, description="Google Slides presentation ID")
+
+
+class GoogleSlidesPreviewResponse(BaseModel):
+    google_presentation_id: str
+    title: str
+    first_slide_object_id: str | None = None
+    thumbnail_url: str | None = None
+
+
 class BuilderPriorityItem(BaseModel):
     id: str
     text: str

@@ -44,6 +44,8 @@ from backend.schemas.presentations import (
     FeedbackDecision,
     FeedbackDecisionRequest,
     FeedbackCriterion,
+    GoogleSlidesPreviewRequest,
+    GoogleSlidesPreviewResponse,
     PostFeedbackData,
     PostFeedbackGenerationRequest,
     PostFeedbackReport,
@@ -784,6 +786,42 @@ def _to_import_response(presentation: Presentation) -> PresentationImportRespons
     )
 
 
+@router.post("/google-slides-preview", response_model=GoogleSlidesPreviewResponse)
+async def preview_google_slides(
+    payload: GoogleSlidesPreviewRequest,
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
+    credentials = get_google_credentials_for_session(session_id)
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Missing Google session. Re-authenticate.")
+
+    try:
+        presentation_payload = await _fetch_presentation_with_refresh(
+            credentials=credentials,
+            google_presentation_id=payload.presentation_id,
+        )
+        first_slide = next(iter(presentation_payload.get("slides") or []), {})
+        first_slide_object_id = first_slide.get("objectId")
+        thumbnail_url = None
+
+        if first_slide_object_id:
+            thumbnail_payload = await _fetch_slide_thumbnail_by_google_id_with_refresh(
+                credentials=credentials,
+                google_presentation_id=payload.presentation_id,
+                slide_object_id=first_slide_object_id,
+            )
+            thumbnail_url = thumbnail_payload.get("contentUrl")
+
+        return GoogleSlidesPreviewResponse(
+            google_presentation_id=payload.presentation_id,
+            title=presentation_payload.get("title") or "Untitled Google Slides deck",
+            first_slide_object_id=first_slide_object_id,
+            thumbnail_url=thumbnail_url,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise _google_api_exception(exc) from exc
+
+
 def _google_api_exception(exc: httpx.HTTPStatusError) -> HTTPException:
     try:
         detail = exc.response.json()
@@ -799,12 +837,25 @@ async def _fetch_thumbnail_with_refresh(
     presentation: Presentation,
     slide: PresentationSlide,
 ) -> dict:
+    return await _fetch_slide_thumbnail_by_google_id_with_refresh(
+        credentials=credentials,
+        google_presentation_id=presentation.google_presentation_id,
+        slide_object_id=slide.google_object_id,
+    )
+
+
+async def _fetch_slide_thumbnail_by_google_id_with_refresh(
+    *,
+    credentials,
+    google_presentation_id: str,
+    slide_object_id: str,
+) -> dict:
     client = GoogleSlidesClient(access_token=credentials.access_token)
 
     try:
         return await client.fetch_slide_thumbnail(
-            presentation_id=presentation.google_presentation_id,
-            slide_object_id=slide.google_object_id,
+            presentation_id=google_presentation_id,
+            slide_object_id=slide_object_id,
         )
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 401 or not credentials.refresh_token:
@@ -823,8 +874,8 @@ async def _fetch_thumbnail_with_refresh(
 
         client = GoogleSlidesClient(access_token=credentials.access_token)
         return await client.fetch_slide_thumbnail(
-            presentation_id=presentation.google_presentation_id,
-            slide_object_id=slide.google_object_id,
+            presentation_id=google_presentation_id,
+            slide_object_id=slide_object_id,
         )
 
 
