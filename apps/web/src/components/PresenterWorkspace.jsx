@@ -84,6 +84,7 @@ function PresenterWorkspace({
               ? '64px minmax(0, 1fr)'
               : `${slidePanelWidth}px 16px minmax(0, 1fr)`,
           },
+          gridTemplateRows: { lg: 'auto minmax(0, 1fr)' },
           gap: { xs: 2, lg: slidePanelCollapsed ? 2 : 0 },
           alignItems: 'stretch',
           height: {
