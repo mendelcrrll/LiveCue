@@ -314,7 +314,19 @@ function Home() {
       return;
     }
 
-    navigate(`/presentation-schema/${item.presentationId}`);
+    const slideParam = item.firstSlideId
+      ? `?slideId=${encodeURIComponent(item.firstSlideId)}`
+      : '';
+    const slideOnlyParam = item.firstSlideId
+      ? `?mode=slide&slideId=${encodeURIComponent(item.firstSlideId)}`
+      : '?mode=slide';
+
+    window.open(
+      `/presentation-schema/${item.presentationId}${slideOnlyParam}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+    navigate(`/presentation-schema/${item.presentationId}${slideParam}`);
   }
 
   function isLockedPresentation(item) {
