@@ -13,6 +13,7 @@ import CreateNewFolderOutlinedIcon from '@mui/icons-material/CreateNewFolderOutl
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import PlayCircleOutlineOutlinedIcon from '@mui/icons-material/PlayCircleOutlineOutlined';
 import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined';
 import SlideshowOutlinedIcon from '@mui/icons-material/SlideshowOutlined';
 import ButtonAppBar from '../components/AppBar';
@@ -301,6 +302,19 @@ function Home() {
     }
 
     navigate(`/feedback-page/${item.presentationId}`);
+  }
+
+  function openPresentation(item) {
+    if (!item?.presentationId) {
+      return;
+    }
+
+    if (isLockedPresentation(item)) {
+      promptGoogleSignIn();
+      return;
+    }
+
+    navigate(`/presentation-schema/${item.presentationId}`);
   }
 
   function isLockedPresentation(item) {
@@ -716,6 +730,18 @@ function Home() {
                             >
                               {isLocked ? 'Sign in' : 'Edit'}
                             </Button>
+                            {!isLocked && item.presentationId && (
+                              <Button
+                                variant="outlined"
+                                startIcon={<PlayCircleOutlineOutlinedIcon />}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openPresentation(item);
+                                }}
+                              >
+                                Present
+                              </Button>
+                            )}
                             {!isLocked && item.presentationId && (
                               <Button
                                 variant="outlined"
