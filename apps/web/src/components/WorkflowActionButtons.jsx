@@ -4,18 +4,12 @@ import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
-import NoteAddOutlinedIcon from '@mui/icons-material/NoteAddOutlined';
 
 const ACTIONS = [
   {
     key: 'folder',
     label: 'Add Folder',
     icon: <CreateNewFolderOutlinedIcon fontSize="small" />,
-  },
-  {
-    key: 'file',
-    label: 'Add File',
-    icon: <NoteAddOutlinedIcon fontSize="small" />,
   },
   {
     key: 'slides',
@@ -28,13 +22,11 @@ export default function WorkflowActionButtons({
   canCreate = true,
   canRemove = false,
   onAddFolder,
-  onAddFile,
   onRequestSlides,
   onRemove,
 }) {
   const handlers = {
     folder: onAddFolder,
-    file: onAddFile,
     slides: onRequestSlides,
   };
 

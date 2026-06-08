@@ -141,7 +141,7 @@ function Home() {
   const canRemove = Boolean(selectedNode && selectedParent);
 
   async function createNode(mode, values) {
-    if (!targetFolder) {
+    if (!targetFolder || !['folder', 'slides'].includes(mode)) {
       return;
     }
 
@@ -212,8 +212,8 @@ function Home() {
           : await PresentationWorkflowService.createFile({
               parentId: targetFolder.id,
               name: values.name,
-              sourceKind: mode === 'slides' ? 'google_slides_request' : 'manual',
-              googlePresentationId: mode === 'slides' ? values.googlePresentationId : undefined,
+              sourceKind: 'google_slides_request',
+              googlePresentationId: values.googlePresentationId,
             });
 
       if (mode !== 'slides') {
@@ -222,9 +222,7 @@ function Home() {
       setActionFeedback(
         mode === 'folder'
           ? 'Folder created successfully.'
-          : mode === 'slides'
-            ? 'Google Slides deck imported and linked successfully.'
-            : 'File created successfully.'
+          : 'Google Slides deck imported and linked successfully.'
       );
       await loadPresentationTree(payload.id);
     } catch (error) {
@@ -485,7 +483,6 @@ function Home() {
         canCreate={canCreate}
         canRemove={canRemove}
         onAddFolder={() => setActionMode('folder')}
-        onAddFile={() => setActionMode('file')}
         onRequestSlides={() => setActionMode('slides')}
         onRemove={removeSelectedNode}
       />
@@ -573,7 +570,6 @@ function Home() {
                 canCreate={canCreate}
                 canRemove={canRemove}
                 onAddFolder={() => setActionMode('folder')}
-                onAddFile={() => setActionMode('file')}
                 onRequestSlides={() => setActionMode('slides')}
                 onRemove={removeSelectedNode}
               />

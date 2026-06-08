@@ -18,12 +18,6 @@ const DIALOG_COPY = {
     helperText: 'Create a new folder inside the selected folder.',
     submitLabel: 'Create Folder',
   },
-  file: {
-    title: 'Add File',
-    nameLabel: 'File name',
-    helperText: 'Add a generic file entry to the selected folder.',
-    submitLabel: 'Create File',
-  },
   slides: {
     title: 'Import Google Slides',
     nameLabel: 'Display name',
@@ -80,7 +74,7 @@ export default function WorkflowRequestDialog({
     if (mode === 'folder') {
       return 'New Folder';
     }
-    return 'new-file.pptx';
+    return DEFAULT_SLIDES_NAME;
   });
   const [slideDeckUrl, setSlideDeckUrl] = useState('');
   const [deckLookupStatus, setDeckLookupStatus] = useState('idle');

@@ -493,12 +493,23 @@ async def update_builder_slide_notes(
 
         speaker_notes_object_id = _get_speaker_notes_object_id(slide)
         if not speaker_notes_object_id:
-            raise HTTPException(status_code=400, detail="Speaker notes object was not found.")
+            await _refresh_slide_google_context(
+                credentials=credentials,
+                presentation=presentation,
+                slide=slide,
+            )
+            speaker_notes_object_id = _get_speaker_notes_object_id(slide)
+        if not speaker_notes_object_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Google did not return a speaker notes object for this slide.",
+            )
 
         await _update_speaker_notes_with_refresh(
             credentials=credentials,
             google_presentation_id=presentation.google_presentation_id,
             speaker_notes_object_id=speaker_notes_object_id,
+            existing_speaker_notes=_get_speaker_notes(slide),
             speaker_notes=payload.speakerNotes,
         )
 
@@ -1017,18 +1028,53 @@ def _preserve_builder_context(
             next_raw_page[key] = old_raw_page[key]
 
 
+async def _refresh_slide_google_context(
+    *,
+    credentials,
+    presentation: Presentation,
+    slide: PresentationSlide,
+) -> None:
+    presentation_payload = await _fetch_presentation_with_refresh(
+        credentials=credentials,
+        google_presentation_id=presentation.google_presentation_id,
+    )
+    normalized_payload = GoogleSlidesPresentationInput.model_validate(presentation_payload)
+    refreshed_slide = next(
+        (
+            slide_payload
+            for slide_payload in normalized_payload.slides
+            if slide_payload.objectId == slide.google_object_id
+        ),
+        None,
+    )
+    if refreshed_slide is None:
+        raise HTTPException(status_code=404, detail="Slide was not found in Google Slides.")
+
+    old_raw_page = dict(slide.raw_page or {})
+    next_raw_page = _add_readable_slide_context(
+        refreshed_slide.model_dump(mode="python"),
+        slide_index=slide.slide_index,
+    )
+    _preserve_builder_context(old_raw_page=old_raw_page, next_raw_page=next_raw_page)
+    slide.raw_page = next_raw_page
+
+
 async def _update_speaker_notes_with_refresh(
     *,
     credentials,
     google_presentation_id: str,
     speaker_notes_object_id: str,
+    existing_speaker_notes: str,
     speaker_notes: str,
 ) -> dict:
     client = GoogleSlidesClient(access_token=credentials.access_token)
     requests = _build_speaker_notes_update_requests(
         speaker_notes_object_id=speaker_notes_object_id,
+        existing_speaker_notes=existing_speaker_notes,
         speaker_notes=speaker_notes,
     )
+    if not requests:
+        return {}
 
     try:
         return dict(await client.batch_update_presentation(google_presentation_id, requests))
@@ -1054,16 +1100,20 @@ async def _update_speaker_notes_with_refresh(
 def _build_speaker_notes_update_requests(
     *,
     speaker_notes_object_id: str,
+    existing_speaker_notes: str,
     speaker_notes: str,
 ) -> list[dict]:
-    requests: list[dict] = [
-        {
-            "deleteText": {
-                "objectId": speaker_notes_object_id,
-                "textRange": {"type": "ALL"},
+    requests: list[dict] = []
+
+    if existing_speaker_notes:
+        requests.append(
+            {
+                "deleteText": {
+                    "objectId": speaker_notes_object_id,
+                    "textRange": {"type": "ALL"},
+                }
             }
-        }
-    ]
+        )
 
     if speaker_notes:
         requests.append(
@@ -1087,6 +1137,11 @@ def _get_speaker_notes_object_id(slide: PresentationSlide) -> str | None:
     )
     object_id = notes_properties.get("speakerNotesObjectId")
     return str(object_id) if object_id else None
+
+
+def _get_speaker_notes(slide: PresentationSlide) -> str:
+    raw_page = _ensure_readable_slide_context(slide)
+    return str(raw_page.get("speakerNotes") or raw_page.get("notes") or "")
 
 
 def _to_post_feedback_response(presentation: Presentation) -> PostFeedbackData:
