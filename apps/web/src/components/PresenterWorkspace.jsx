@@ -56,19 +56,24 @@ function PresenterWorkspace({
   transcriptionError,
 }) {
   return (
-    <Stack 
-      spacing={0} 
-      sx={{ 
-        width: { xs: '100%', lg: `${100 / PRESENTER_WORKSPACE_SCALE}%` }, 
-        maxWidth: { xs: 1440, lg: `calc(1440px / ${PRESENTER_WORKSPACE_SCALE})` },
-        mx: 'auto', 
-        mt: { xs: 1.5, lg: 2 }, 
-        minHeight: 0, 
-        transform: { lg: `scale(max(1, min(${PRESENTER_WORKSPACE_SCALE}, 1.5)))` },
-        transformOrigin: 'top left', 
-      }} 
+    <Stack
+      spacing={0}
+      sx={{
+        width: {
+          xs: '100%',
+          lg: `${100 / PRESENTER_WORKSPACE_SCALE}%`,
+        },
+        maxWidth: {
+          xs: 1440,
+          lg: 1440 / PRESENTER_WORKSPACE_SCALE,
+        },
+        mx: 'auto',
+        mt: { xs: 1.5, lg: 2 },
+        minHeight: 0,
+        transform: { lg: `scale(${PRESENTER_WORKSPACE_SCALE})` },
+        transformOrigin: 'top left',
+      }}
     >
-
       <Box
         ref={panelGridRef}
         sx={{
