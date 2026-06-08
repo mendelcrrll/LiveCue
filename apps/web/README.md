@@ -66,13 +66,14 @@ npm --workspace web run build
 
 ## API Configuration
 
-The frontend reads `VITE_API_BASE_URL`.
+The frontend uses same-origin `/api` URLs by default:
 
-If it is not set, `src/services/apiClient.js` defaults to:
+- Local Vite development proxies `/api` to `http://127.0.0.1:8000`.
+- Vercel proxies `/api` to the Render backend using `vercel.json`.
 
-```text
-http://127.0.0.1:8000
-```
+Keeping browser requests on the frontend origin makes the session cookie first-party, which is
+required for reliable Safari and Firefox sign-in. `VITE_API_BASE_URL` is only honored during local
+development; production builds always use same-origin `/api`.
 
 All API requests should go through `services/*` rather than calling `fetch` directly from UI components, except for specialized upload cases already isolated in `TranscriptionService.js`.
 

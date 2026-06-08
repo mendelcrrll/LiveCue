@@ -69,14 +69,21 @@ http://127.0.0.1:5173/
 
 If you use `localhost` instead of `127.0.0.1`, keep the backend CORS settings, Google redirect URI, and browser URL consistent.
 
-For production with the Vercel frontend calling the Render API, the browser treats API requests as cross-site. Keep `COOKIE_SAMESITE=auto` or set `COOKIE_SAMESITE=none`; the session cookie must be sent as `SameSite=None; Secure` for `/api/auth/session` to stay authenticated after Google redirects back.
+For production, Vercel proxies `/api` to Render so the browser always uses the frontend origin.
+Configure the Google OAuth client and Render environment with the Vercel production URL:
+
+```text
+GOOGLE_REDIRECT_URI=https://<your-vercel-domain>/api/auth/google/callback
+FRONTEND_OAUTH_REDIRECT_URL=https://<your-vercel-domain>/
+COOKIE_SAMESITE=lax
+API_ENV=production
+```
+
+Add the same `GOOGLE_REDIRECT_URI` value to the Google OAuth client's authorized redirect URIs.
+Do not set `VITE_API_BASE_URL` to the Render URL in Vercel; browser requests must remain on `/api`
+so the session cookie is first-party in Safari and Firefox.
 
 ## Frontend Environment
 
-The web app can use `VITE_API_BASE_URL`.
-
-If unset, it defaults to:
-
-```text
-https://livecue-e7vl.onrender.com
-```
+The web app can use `VITE_API_BASE_URL` during local development. Production builds ignore it and
+always use same-origin `/api`.
