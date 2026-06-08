@@ -4,6 +4,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Cookie, HTTPException, Response, status
+from fastapi.responses import RedirectResponse
 
 from backend.ai.model_client import ModelClient
 from backend.auth.google_auth import GoogleAuthService
@@ -68,6 +69,7 @@ POST_FEEDBACK_THEMES = [
     ("engagementConnection", "Engagement"),
     ("accessibilityDelivery", "Accessibility"),
 ]
+THUMBNAIL_CACHE_SECONDS = 20 * 60
 
 
 @router.get("/tree")
@@ -308,7 +310,8 @@ async def refresh_slide_thumbnail(
 
         raw_page = dict(slide.raw_page or {})
         raw_page["thumbnailUrl"] = thumbnail_url
-        raw_page.setdefault("imageUrl", thumbnail_url)
+        raw_page["imageUrl"] = thumbnail_url
+        raw_page["thumbnailRefreshedAt"] = int(time.time())
         slide.raw_page = raw_page
         session.commit()
 
@@ -318,6 +321,64 @@ async def refresh_slide_thumbnail(
         raise
     except httpx.HTTPStatusError as exc:
         session.rollback()
+        raise _google_api_exception(exc) from exc
+    finally:
+        session.close()
+
+
+@router.get("/{presentation_id}/slides/{slide_id}/thumbnail-image")
+async def get_slide_thumbnail_image(
+    presentation_id: UUID,
+    slide_id: UUID,
+    session_id: str | None = Cookie(default=None, alias="session_id"),
+):
+    credentials = get_google_credentials_for_session(session_id)
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Connect Google to load presentation thumbnails.",
+        )
+
+    session = get_session()
+
+    try:
+        presentation = session.get(Presentation, presentation_id)
+        if presentation is None:
+            raise HTTPException(status_code=404, detail="Presentation not found.")
+
+        slide = session.get(PresentationSlide, slide_id)
+        if slide is None or slide.presentation_id != presentation_id:
+            raise HTTPException(status_code=404, detail="Slide not found.")
+
+        thumbnail_url = _get_fresh_cached_thumbnail_url(slide)
+        if not thumbnail_url:
+            thumbnail_payload = await _fetch_thumbnail_with_refresh(
+                credentials=credentials,
+                presentation=presentation,
+                slide=slide,
+            )
+            thumbnail_url = thumbnail_payload.get("contentUrl")
+            if not thumbnail_url:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Google did not return a thumbnail URL.",
+                )
+
+            raw_page = dict(slide.raw_page or {})
+            raw_page["thumbnailUrl"] = thumbnail_url
+            raw_page["imageUrl"] = thumbnail_url
+            raw_page["thumbnailRefreshedAt"] = int(time.time())
+            slide.raw_page = raw_page
+            session.commit()
+
+        return RedirectResponse(
+            url=thumbnail_url,
+            status_code=status.HTTP_302_FOUND,
+            headers={"Cache-Control": "no-store"},
+        )
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as exc:
         raise _google_api_exception(exc) from exc
     finally:
         session.close()
@@ -950,6 +1011,7 @@ def _preserve_builder_context(
         "lastFeedbackDecision",
         "thumbnailUrl",
         "imageUrl",
+        "thumbnailRefreshedAt",
     ):
         if old_raw_page.get(key) is not None and next_raw_page.get(key) is None:
             next_raw_page[key] = old_raw_page[key]
@@ -1139,7 +1201,7 @@ def _to_builder_slide(slide) -> BuilderSlide:
         slideText=slide_text,
         speakerNotes=speaker_notes,
         demoTranscript=demo_transcript,
-        thumbnailUrl=raw_page.get("thumbnailUrl") or raw_page.get("imageUrl"),
+        thumbnailUrl=_slide_thumbnail_image_url(slide),
         buildData=BuilderSlideData(
             priorityItems=[
                 BuilderPriorityItem(
@@ -1163,6 +1225,27 @@ def _to_builder_slide(slide) -> BuilderSlide:
             ),
         ),
     )
+
+
+def _slide_thumbnail_image_url(slide: PresentationSlide) -> str | None:
+    raw_page = slide.raw_page or {}
+    if not (raw_page.get("thumbnailUrl") or raw_page.get("imageUrl")):
+        return None
+
+    return f"/api/presentations/{slide.presentation_id}/slides/{slide.id}/thumbnail-image"
+
+
+def _get_fresh_cached_thumbnail_url(slide: PresentationSlide) -> str | None:
+    raw_page = slide.raw_page or {}
+    thumbnail_url = raw_page.get("thumbnailUrl") or raw_page.get("imageUrl")
+    refreshed_at = raw_page.get("thumbnailRefreshedAt")
+
+    if not thumbnail_url or not isinstance(refreshed_at, int):
+        return None
+    if time.time() - refreshed_at >= THUMBNAIL_CACHE_SECONDS:
+        return None
+
+    return thumbnail_url
 
 
 def _get_demo_transcript_text(slide: PresentationSlide, raw_page: dict | None = None) -> str:

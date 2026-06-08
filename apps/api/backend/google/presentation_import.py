@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -48,6 +49,7 @@ async def _add_slide_thumbnails(
             if thumbnail_url:
                 slide["thumbnailUrl"] = thumbnail_url
                 slide.setdefault("imageUrl", thumbnail_url)
+                slide["thumbnailRefreshedAt"] = int(time.time())
 
         slides.append(slide)
 

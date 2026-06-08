@@ -1,13 +1,19 @@
+import { resolveApiUrl } from '../services/apiClient';
+
 export function sortSlidesByNumber(slides = []) {
   return [...slides].sort((a, b) => a.slideNumber - b.slideNumber);
 }
 
 export function getSlidePreviewImage(slide) {
-  return slide?.thumbnailUrl ?? slide?.imageUrl ?? '';
+  return resolveSlideImage(slide?.thumbnailUrl ?? slide?.imageUrl);
 }
 
 export function getSlideDisplayImage(slide) {
-  return slide?.imageUrl ?? slide?.thumbnailUrl ?? '';
+  return resolveSlideImage(slide?.imageUrl ?? slide?.thumbnailUrl);
+}
+
+function resolveSlideImage(imageUrl) {
+  return imageUrl ? resolveApiUrl(imageUrl) : '';
 }
 
 export function isPriorityItemComplete(item) {

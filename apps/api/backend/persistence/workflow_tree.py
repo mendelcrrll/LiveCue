@@ -151,7 +151,11 @@ def _serialize_node(node: WorkflowNode) -> dict[str, Any]:
         first_slide = node.presentation.slides[0]
         first_slide_id = str(first_slide.id)
         raw_page = first_slide.raw_page or {}
-        thumbnail_url = raw_page.get("thumbnailUrl") or raw_page.get("imageUrl")
+        if raw_page.get("thumbnailUrl") or raw_page.get("imageUrl"):
+            thumbnail_url = (
+                f"/api/presentations/{node.presentation_id}/slides/"
+                f"{first_slide.id}/thumbnail-image"
+            )
 
     return {
         "id": str(node.id),

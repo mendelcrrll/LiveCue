@@ -48,4 +48,4 @@ function jsonRequestOptions(method, body) {
   };
 }
 
-export { API_BASE_URL, jsonRequestOptions, requestJson };
+export { API_BASE_URL, jsonRequestOptions, requestJson, resolveApiUrl };
